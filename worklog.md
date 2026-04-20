@@ -92,3 +92,31 @@ Stage Summary:
 - All APIs return correct format
 - Lint passes
 - Application fully functional
+
+---
+Task ID: 11
+Agent: Main
+Task: Add multi-select provider departments feature for batch request creation
+
+Work Log:
+- Updated /api/requests/route.ts POST to accept both providerDeptId (single) and providerDeptIds (array)
+- Added batch creation logic that creates individual InformationRequest records for each selected provider
+- Added department existence validation for all provider IDs
+- Updated NuevaSolicitudTab to replace single Select with checkbox-based multi-select UI
+- Added Checkbox component import from shadcn/ui
+- Changed form state from providerDeptId: string to providerDeptIds: string[]
+- Added toggleProvider() for individual checkbox toggle
+- Added toggleAllInGroup() for group select/deselect (Direcciones/UEBs)
+- Added isGroupAllSelected() to track group selection state
+- Auto-excludes requester department from available providers
+- Shows selected providers as removable badges below the card
+- Submit button text adapts to show count when multiple providers selected
+- Success toast shows count of created requests
+- Lint passes with no errors
+
+Stage Summary:
+- Provider department multi-select feature fully implemented
+- Users can select multiple providers (e.g., all UEBs) and create individual requests for each
+- "Todos/Ninguno" quick-select buttons per group (Direcciones Funcionales, UEBs)
+- Selected providers shown as removable badges
+- API supports both single and batch creation modes

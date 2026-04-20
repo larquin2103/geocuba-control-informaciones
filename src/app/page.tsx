@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -596,7 +597,7 @@ function NuevaSolicitudTab() {
   const queryClient = useQueryClient()
   const [form, setForm] = useState({
     requesterDeptId: '',
-    providerDeptId: '',
+    providerDeptIds: [] as string[],
     description: '',
     deadlineDate: undefined as Date | undefined,
     priority: 'NORMAL' as string,
@@ -607,14 +608,56 @@ function NuevaSolicitudTab() {
   const direcciones = (departments || []).filter(d => d.type === 'DIRECCION_FUNCIONAL')
   const uebs = (departments || []).filter(d => d.type === 'UEB')
 
+  // Available providers (excluding the requester)
+  const availableDirecciones = direcciones.filter(d => d.id !== form.requesterDeptId)
+  const availableUebs = uebs.filter(d => d.id !== form.requesterDeptId)
+
+  // Toggle a provider in the selection
+  const toggleProvider = (deptId: string) => {
+    setForm(f => ({
+      ...f,
+      providerDeptIds: f.providerDeptIds.includes(deptId)
+        ? f.providerDeptIds.filter(id => id !== deptId)
+        : [...f.providerDeptIds, deptId],
+    }))
+    // Clear error when selecting
+    if (errors.providerDeptIds) {
+      setErrors(e => ({ ...e, providerDeptIds: '' }))
+    }
+  }
+
+  // Select/deselect all in a group
+  const toggleAllInGroup = (groupDepts: Department[], selectAll: boolean) => {
+    const groupIds = groupDepts.map(d => d.id)
+    setForm(f => {
+      if (selectAll) {
+        // Add all from group that aren't already selected
+        const newIds = [...new Set([...f.providerDeptIds, ...groupIds])]
+        return { ...f, providerDeptIds: newIds }
+      } else {
+        // Remove all from group
+        return { ...f, providerDeptIds: f.providerDeptIds.filter(id => !groupIds.includes(id)) }
+      }
+    })
+  }
+
+  // Check if all in a group are selected
+  const isGroupAllSelected = (groupDepts: Department[]) => {
+    const groupIds = groupDepts.map(d => d.id)
+    return groupIds.length > 0 && groupIds.every(id => form.providerDeptIds.includes(id))
+  }
+
   const createRequest = useMutation({
     mutationFn: async (data: typeof form) => {
       const res = await fetch('/api/requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...data,
+          requesterDeptId: data.requesterDeptId,
+          providerDeptIds: data.providerDeptIds,
+          description: data.description,
           deadlineDate: data.deadlineDate?.toISOString(),
+          priority: data.priority,
         }),
       })
       if (!res.ok) {
@@ -623,11 +666,12 @@ function NuevaSolicitudTab() {
       }
       return res.json()
     },
-    onSuccess: () => {
-      toast.success('Solicitud creada exitosamente')
+    onSuccess: (data) => {
+      const count = data.created || 1
+      toast.success(`${count} solicitud${count > 1 ? 'es creadas' : ' creada'} exitosamente`)
       setForm({
         requesterDeptId: '',
-        providerDeptId: '',
+        providerDeptIds: [],
         description: '',
         deadlineDate: undefined,
         priority: 'NORMAL',
@@ -644,13 +688,10 @@ function NuevaSolicitudTab() {
   const validate = () => {
     const newErrors: Record<string, string> = {}
     if (!form.requesterDeptId) newErrors.requesterDeptId = 'Seleccione un departamento solicitante'
-    if (!form.providerDeptId) newErrors.providerDeptId = 'Seleccione un departamento proveedor'
+    if (form.providerDeptIds.length === 0) newErrors.providerDeptIds = 'Seleccione al menos un departamento proveedor'
     if (!form.description.trim()) newErrors.description = 'Ingrese una descripción'
     if (!form.deadlineDate) newErrors.deadlineDate = 'Seleccione una fecha límite'
     if (!form.priority) newErrors.priority = 'Seleccione una prioridad'
-    if (form.requesterDeptId && form.providerDeptId && form.requesterDeptId === form.providerDeptId) {
-      newErrors.providerDeptId = 'El proveedor debe ser diferente al solicitante'
-    }
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -660,6 +701,11 @@ function NuevaSolicitudTab() {
     if (!validate()) return
     createRequest.mutate(form)
   }
+
+  // Get selected provider names for display
+  const selectedProviderNames = form.providerDeptIds
+    .map(id => departments?.find(d => d.id === id)?.name)
+    .filter(Boolean) as string[]
 
   return (
     <div className="p-4 space-y-4">
@@ -671,7 +717,14 @@ function NuevaSolicitudTab() {
           <Label htmlFor="requester" className="text-sm font-medium">
             Departamento Solicitante *
           </Label>
-          <Select value={form.requesterDeptId} onValueChange={(v) => setForm(f => ({ ...f, requesterDeptId: v }))}>
+          <Select value={form.requesterDeptId} onValueChange={(v) => {
+            setForm(f => ({
+              ...f,
+              requesterDeptId: v,
+              // Remove the newly selected requester from providers if it was there
+              providerDeptIds: f.providerDeptIds.filter(id => id !== v),
+            }))
+          }}>
             <SelectTrigger className={`w-full ${errors.requesterDeptId ? 'border-red-400' : ''}`}>
               <SelectValue placeholder="Seleccionar..." />
             </SelectTrigger>
@@ -694,32 +747,136 @@ function NuevaSolicitudTab() {
           {errors.requesterDeptId && <p className="text-xs text-red-500">{errors.requesterDeptId}</p>}
         </div>
 
-        {/* Departamento Proveedor */}
+        {/* Departamentos Proveedores (Multi-select) */}
         <div className="space-y-2">
-          <Label htmlFor="provider" className="text-sm font-medium">
-            Departamento Proveedor *
-          </Label>
-          <Select value={form.providerDeptId} onValueChange={(v) => setForm(f => ({ ...f, providerDeptId: v }))}>
-            <SelectTrigger className={`w-full ${errors.providerDeptId ? 'border-red-400' : ''}`}>
-              <SelectValue placeholder="Seleccionar..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectLabel>Direcciones Funcionales</SelectLabel>
-                {direcciones.map(d => (
-                  <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                ))}
-              </SelectGroup>
-              <SelectSeparator />
-              <SelectGroup>
-                <SelectLabel>UEB</SelectLabel>
-                {uebs.map(d => (
-                  <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-          {errors.providerDeptId && <p className="text-xs text-red-500">{errors.providerDeptId}</p>}
+          <div className="flex items-center justify-between">
+            <Label className="text-sm font-medium">
+              Departamentos Proveedores *
+            </Label>
+            {form.providerDeptIds.length > 0 && (
+              <span className="text-xs text-teal-700 font-medium bg-teal-50 px-2 py-0.5 rounded-full">
+                {form.providerDeptIds.length} seleccionado{form.providerDeptIds.length > 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+
+          <Card className={`py-0 ${errors.providerDeptIds ? 'border-red-400' : ''}`}>
+            <CardContent className="p-0">
+              {!form.requesterDeptId ? (
+                <div className="p-4 text-center text-muted-foreground text-sm">
+                  <Users className="size-5 mx-auto mb-1 opacity-50" />
+                  Seleccione primero un departamento solicitante
+                </div>
+              ) : (
+                <div className="divide-y">
+                  {/* Direcciones Funcionales Group */}
+                  {availableDirecciones.length > 0 && (
+                    <div className="p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                          <Shield className="size-3" />
+                          Direcciones Funcionales
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-[11px] px-2 text-teal-700 hover:text-teal-800"
+                          onClick={() => toggleAllInGroup(availableDirecciones, !isGroupAllSelected(availableDirecciones))}
+                        >
+                          {isGroupAllSelected(availableDirecciones) ? 'Ninguno' : 'Todos'}
+                        </Button>
+                      </div>
+                      <div className="space-y-1.5">
+                        {availableDirecciones.map(d => (
+                          <label
+                            key={d.id}
+                            className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer transition-colors ${
+                              form.providerDeptIds.includes(d.id) ? 'bg-teal-50' : 'hover:bg-muted/50'
+                            }`}
+                          >
+                            <Checkbox
+                              checked={form.providerDeptIds.includes(d.id)}
+                              onCheckedChange={() => toggleProvider(d.id)}
+                              className="data-[state=checked]:bg-teal-700 data-[state=checked]:border-teal-700"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{d.name}</p>
+                              <p className="text-[11px] text-muted-foreground truncate">{d.responsibleName} · {d.email}</p>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* UEB Group */}
+                  {availableUebs.length > 0 && (
+                    <div className="p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                          <MapPin className="size-3" />
+                          Unidades Empresariales de Base
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-[11px] px-2 text-teal-700 hover:text-teal-800"
+                          onClick={() => toggleAllInGroup(availableUebs, !isGroupAllSelected(availableUebs))}
+                        >
+                          {isGroupAllSelected(availableUebs) ? 'Ninguno' : 'Todos'}
+                        </Button>
+                      </div>
+                      <div className="space-y-1.5">
+                        {availableUebs.map(d => (
+                          <label
+                            key={d.id}
+                            className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer transition-colors ${
+                              form.providerDeptIds.includes(d.id) ? 'bg-teal-50' : 'hover:bg-muted/50'
+                            }`}
+                          >
+                            <Checkbox
+                              checked={form.providerDeptIds.includes(d.id)}
+                              onCheckedChange={() => toggleProvider(d.id)}
+                              className="data-[state=checked]:bg-teal-700 data-[state=checked]:border-teal-700"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{d.name}</p>
+                              <p className="text-[11px] text-muted-foreground truncate">{d.responsibleName} · {d.email}</p>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Selected providers as badges */}
+          {selectedProviderNames.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {selectedProviderNames.map((name, idx) => (
+                <Badge key={idx} variant="secondary" className="text-[11px] bg-teal-50 text-teal-800 hover:bg-teal-100 gap-1 pr-1">
+                  {name}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const deptId = form.providerDeptIds[idx]
+                      if (deptId) toggleProvider(deptId)
+                    }}
+                    className="ml-0.5 rounded-full hover:bg-teal-200 p-0.5 transition-colors"
+                  >
+                    <XCircle className="size-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          )}
+
+          {errors.providerDeptIds && <p className="text-xs text-red-500">{errors.providerDeptIds}</p>}
         </div>
 
         {/* Descripción */}
@@ -797,12 +954,14 @@ function NuevaSolicitudTab() {
           {createRequest.isPending ? (
             <>
               <Loader2 className="size-4 mr-2 animate-spin" />
-              Creando...
+              Creando {form.providerDeptIds.length > 1 ? `${form.providerDeptIds.length} solicitudes...` : '...'}
             </>
           ) : (
             <>
               <Send className="size-4 mr-2" />
-              Crear Solicitud
+              {form.providerDeptIds.length > 1
+                ? `Crear ${form.providerDeptIds.length} Solicitudes`
+                : 'Crear Solicitud'}
             </>
           )}
         </Button>
