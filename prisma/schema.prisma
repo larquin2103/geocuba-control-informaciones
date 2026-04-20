@@ -1,0 +1,118 @@
+// GEOCUBA Camagüey - Ciego de Ávila
+// Sistema de Control de Entrega de Informaciones
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Tipos de departamentos
+// DIRECCION_FUNCIONAL = Direcciones funcionales que solicitan/entregan información
+// UEB = Unidades Empresariales de Base
+model Department {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  type            String   // DIRECCION_FUNCIONAL, UEB
+  responsibleName String   // Nombre del responsable
+  responsibleRole String   // Cargo del responsable
+  email           String   // Correo electrónico del responsable
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relaciones - Solicitudes donde este depto es el solicitante
+  requestedBy     InformationRequest[] @relation("RequesterDepartment")
+  // Relaciones - Solicitudes donde este depto debe entregar
+  providedBy      InformationRequest[] @relation("ProviderDepartment")
+  // Historial de evaluaciones
+  evaluations     Evaluation[]
+  // Registro de afectaciones
+  affectations    AffectationRecord[]
+}
+
+// Solicitudes de Información
+model InformationRequest {
+  id              String   @id @default(cuid())
+  description     String   // Descripción de la información solicitada
+  deadlineDate    DateTime // Fecha límite de entrega
+  status          String   @default("SOLICITADO") // SOLICITADO, EN_FECHA, CUMPLIDO, INCUMPLIDO
+  completedAt     DateTime? // Fecha en que se completó la entrega
+  completedNotes  String?  // Notas al completar
+  priority        String   @default("NORMAL") // ALTA, NORMAL, BAJA
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Departamento que solicita la información
+  requesterDeptId String
+  requesterDept   Department @relation("RequesterDepartment", fields: [requesterDeptId], references: [id])
+
+  // Departamento que debe entregar la información
+  providerDeptId  String
+  providerDept    Department @relation("ProviderDepartment", fields: [providerDeptId], references: [id])
+
+  // Registros de correos enviados
+  emailLogs       EmailLog[]
+  // Historial de cambios de estado
+  statusHistory   StatusHistory[]
+}
+
+// Historial de cambios de estado
+model StatusHistory {
+  id          String   @id @default(cuid())
+  requestId   String
+  request     InformationRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  fromStatus  String?
+  toStatus    String
+  changedAt   DateTime @default(now())
+  notes       String?
+}
+
+// Registro de correos electrónicos enviados
+model EmailLog {
+  id          String   @id @default(cuid())
+  requestId   String
+  request     InformationRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  recipientEmail String
+  subject     String
+  emailType   String   // RECORDATORIO, NOTIFICACION, CONFIRMACION
+  sentAt      DateTime @default(now())
+  success     Boolean  @default(true)
+  error       String?
+}
+
+// Evaluaciones de cumplimiento por departamento y período
+model Evaluation {
+  id              String   @id @default(cuid())
+  departmentId    String
+  department      Department @relation(fields: [departmentId], references: [id])
+  period          String   // Formato: "2024-01", "2024-Q1", etc.
+  totalRequests   Int      @default(0)
+  completed       Int      @default(0)
+  uncompleted     Int      @default(0)
+  inProgress      Int      @default(0)
+  complianceRate  Float    @default(0) // Porcentaje de cumplimiento 0-100
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// Registro de afectaciones por incumplimiento
+model AffectationRecord {
+  id              String   @id @default(cuid())
+  departmentId    String
+  department      Department @relation(fields: [departmentId], references: [id])
+  requestId       String   // Referencia a la solicitud incumplida
+  requestDescription String // Descripción denormalizada para reportes
+  requesterDeptName  String // Nombre del depto que solicitó (denormalizado)
+  deadlineDate    DateTime
+  detectedAt      DateTime @default(now()) // Cuándo se detectó el incumplimiento
+  affectationValue Float  @default(0.1) // Valor de afectación (0.1 por incumplimiento)
+  cumulativeAffectation Float @default(0) // Afectación acumulada al momento
+  requiresCommissionReview Boolean @default(false) // Si alcanza 3, requiere revisión de comisión
+  reviewStatus    String   @default("PENDIENTE") // PENDIENTE, REVISADO, RESUELTO
+  reviewNotes     String?
+  reviewedAt      DateTime?
+}
