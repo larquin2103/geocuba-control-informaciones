@@ -14,7 +14,7 @@ import {
   Send, Bell, Search, Filter, Building2, Mail, User,
   CalendarIcon, ArrowRight, TrendingUp, Activity, Loader2,
   RefreshCw, ChevronDown, ChevronUp, AlertCircle, Users,
-  FileText, MapPin, PhoneCall, Shield, Eye, Info
+  FileText, MapPin, PhoneCall, Shield, Eye, Info, Download
 } from 'lucide-react'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -1272,6 +1272,31 @@ function ReportesTab() {
 
 function ComplianceReport() {
   const { data, isLoading } = useComplianceReport()
+  const [exporting, setExporting] = useState(false)
+
+  const handleExportPDF = async () => {
+    setExporting(true)
+    try {
+      const res = await fetch('/api/reports/export/compliance')
+      if (!res.ok) throw new Error('Error al generar reporte')
+      const html = await res.text()
+      const printWindow = window.open('', '_blank')
+      if (printWindow) {
+        printWindow.document.write(html)
+        printWindow.document.close()
+        setTimeout(() => {
+          printWindow.print()
+        }, 500)
+        toast.success('Reporte abierto para impresión/PDF')
+      } else {
+        toast.error('Permita las ventanas emergentes para exportar')
+      }
+    } catch {
+      toast.error('Error al exportar PDF')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   if (isLoading) return <DashboardSkeleton />
 
@@ -1279,6 +1304,25 @@ function ComplianceReport() {
 
   return (
     <div className="space-y-4">
+      {/* Header with export button */}
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-muted-foreground">Resumen General</h3>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleExportPDF}
+          disabled={exporting}
+          className="text-teal-700 border-teal-200 hover:bg-teal-50"
+        >
+          {exporting ? (
+            <Loader2 className="size-4 mr-1.5 animate-spin" />
+          ) : (
+            <Download className="size-4 mr-1.5" />
+          )}
+          Exportar PDF
+        </Button>
+      </div>
+
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <MetricCard title="Total" value={data.summary.total} icon={FileText} color="text-teal-700" bgColor="bg-teal-100" />
@@ -1384,6 +1428,31 @@ function ComplianceReport() {
 
 function AffectationReport() {
   const { data, isLoading } = useAffectationReport()
+  const [exporting, setExporting] = useState(false)
+
+  const handleExportPDF = async () => {
+    setExporting(true)
+    try {
+      const res = await fetch('/api/reports/export/affectation')
+      if (!res.ok) throw new Error('Error al generar reporte')
+      const html = await res.text()
+      const printWindow = window.open('', '_blank')
+      if (printWindow) {
+        printWindow.document.write(html)
+        printWindow.document.close()
+        setTimeout(() => {
+          printWindow.print()
+        }, 500)
+        toast.success('Reporte abierto para impresión/PDF')
+      } else {
+        toast.error('Permita las ventanas emergentes para exportar')
+      }
+    } catch {
+      toast.error('Error al exportar PDF')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   if (isLoading) return <DashboardSkeleton />
 
@@ -1391,6 +1460,25 @@ function AffectationReport() {
 
   return (
     <div className="space-y-4">
+      {/* Header with export button */}
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-muted-foreground">Resumen General</h3>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleExportPDF}
+          disabled={exporting}
+          className="text-red-700 border-red-200 hover:bg-red-50"
+        >
+          {exporting ? (
+            <Loader2 className="size-4 mr-1.5 animate-spin" />
+          ) : (
+            <Download className="size-4 mr-1.5" />
+          )}
+          Exportar PDF
+        </Button>
+      </div>
+
       {/* Summary Cards */}
       <div className="grid grid-cols-3 gap-3">
         <MetricCard title="Registros" value={data.summary.totalRecords} icon={FileText} color="text-red-700" bgColor="bg-red-100" />

@@ -120,3 +120,29 @@ Stage Summary:
 - "Todos/Ninguno" quick-select buttons per group (Direcciones Funcionales, UEBs)
 - Selected providers shown as removable badges
 - API supports both single and batch creation modes
+
+---
+Task ID: 12
+Agent: Main
+Task: Add PDF export functionality for compliance and affectation reports
+
+Work Log:
+- Installed pdfkit for server-side PDF generation (initially attempted but had font path issues in Next.js bundled environment)
+- Pivoted to HTML-based report generation approach which is more reliable
+- Created /api/reports/export/compliance/route.ts - generates printable HTML with professional styling for compliance report
+- Created /api/reports/export/affectation/route.ts - generates printable HTML with professional styling for affectation report
+- Both reports include: branded header, summary cards, detailed tables, cross-evaluation matrix (compliance), progress bars (affectation)
+- Updated ComplianceReport component with "Exportar PDF" button (teal themed)
+- Updated AffectationReport component with "Exportar PDF" button (red themed)
+- Export flow: fetches HTML from API → opens in new window → triggers browser print (Save as PDF)
+- Added Download icon to lucide-react imports
+- Added loading state with spinner for export buttons
+- Lint passes with no errors
+- Both export endpoints tested and returning 200 status
+
+Stage Summary:
+- PDF export fully implemented for both report categories
+- Professional print-ready HTML reports with branded styling
+- Compliance report includes: summary metrics, department breakdown table, cross-evaluation matrix
+- Affectation report includes: summary metrics, department cards with progress bars, incumplimiento detail tables
+- Users can print or save as PDF via browser's built-in functionality
