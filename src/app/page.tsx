@@ -966,7 +966,7 @@ function NuevaSolicitudTab() {
                   setCalendarOpen(false)
                 }}
                 disabled={{ before: new Date() }}
-                initialFocus
+                autoFocus
               />
             </PopoverContent>
           </Popover>

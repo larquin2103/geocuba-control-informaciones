@@ -9,20 +9,22 @@ export async function GET() {
     const sevenDaysFromNow = new Date(now)
     sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7)
 
-    // Count requests by status
-    const [
-      totalRequests,
-      solicitadoCount,
-      enFechaCount,
-      cumplidoCount,
-      incumplidoCount,
-    ] = await Promise.all([
-      db.informationRequest.count(),
-      db.informationRequest.count({ where: { status: 'SOLICITADO' } }),
-      db.informationRequest.count({ where: { status: 'EN_FECHA' } }),
-      db.informationRequest.count({ where: { status: 'CUMPLIDO' } }),
-      db.informationRequest.count({ where: { status: 'INCUMPLIDO' } }),
-    ])
+    // Count requests by status using groupBy for efficiency
+    const statusCounts = await db.informationRequest.groupBy({
+      by: ['status'],
+      _count: { status: true },
+    })
+
+    const statusMap: Record<string, number> = {}
+    for (const sc of statusCounts) {
+      statusMap[sc.status] = sc._count.status
+    }
+
+    const totalRequests = Object.values(statusMap).reduce((a, b) => a + b, 0)
+    const cumplidoCount = statusMap['CUMPLIDO'] || 0
+    const enFechaCount = statusMap['EN_FECHA'] || 0
+    const solicitadoCount = statusMap['SOLICITADO'] || 0
+    const incumplidoCount = statusMap['INCUMPLIDO'] || 0
 
     const tasaCumplimiento = totalRequests > 0
       ? Math.round((cumplidoCount / totalRequests) * 100)
@@ -82,32 +84,31 @@ export async function GET() {
       },
     }))
 
-    // Compliance by department (as provider)
+    // Compliance by department (as provider) - optimized with groupBy
+    const providerCompliance = await db.informationRequest.groupBy({
+      by: ['providerDeptId', 'status'],
+      _count: { status: true },
+    })
+
     const departments = await db.department.findMany({
       where: { active: true },
       orderBy: { name: 'asc' },
+      select: { id: true, name: true, type: true },
     })
 
-    const complianceByDept = await Promise.all(
-      departments.map(async (dept) => {
-        const asProvider = await db.informationRequest.findMany({
-          where: { providerDeptId: dept.id },
-        })
-        const total = asProvider.length
-        const completed = asProvider.filter((r) => r.status === 'CUMPLIDO').length
-        const uncompleted = asProvider.filter((r) => r.status === 'INCUMPLIDO').length
-        const rate = total > 0 ? Math.round((completed / total) * 100) : 0
+    const complianceByDept = departments.map((dept) => {
+      const deptRecords = providerCompliance.filter(r => r.providerDeptId === dept.id)
+      const total = deptRecords.reduce((sum, r) => sum + r._count.status, 0)
+      const completed = deptRecords
+        .filter(r => r.status === 'CUMPLIDO')
+        .reduce((sum, r) => sum + r._count.status, 0)
+      const uncompleted = deptRecords
+        .filter(r => r.status === 'INCUMPLIDO')
+        .reduce((sum, r) => sum + r._count.status, 0)
+      const rate = total > 0 ? Math.round((completed / total) * 100) : 0
 
-        return {
-          name: dept.name,
-          type: dept.type,
-          total,
-          completed,
-          uncompleted,
-          rate,
-        }
-      })
-    )
+      return { name: dept.name, type: dept.type, total, completed, uncompleted, rate }
+    })
 
     return NextResponse.json({
       total: totalRequests,
