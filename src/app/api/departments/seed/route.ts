@@ -4,21 +4,41 @@ import { NextResponse } from 'next/server'
 // POST /api/departments/seed - Seed initial departments
 export async function POST() {
   try {
+    // First, rename old department names to new ones
+    const nameRenames: Record<string, string> = {
+      'Departamento de Capital Humano': 'Dirección de Capital Humano',
+      'Departamento de Inversiones': 'Dirección de Inversiones',
+      'Departamento de Infocomunicaciones': 'Dirección de Info-comunicaciones',
+    }
+
+    for (const [oldName, newName] of Object.entries(nameRenames)) {
+      const existing = await db.department.findUnique({ where: { name: oldName } })
+      if (existing) {
+        await db.department.update({
+          where: { id: existing.id },
+          data: { name: newName },
+        })
+      }
+    }
+
+    // Then, seed all departments with full data
     const seedData = [
       // Direcciones Funcionales
       {
-        name: 'Departamento de Capital Humano',
+        name: 'Dirección de Capital Humano',
         type: 'DIRECCION_FUNCIONAL',
         responsibleName: 'Mariela Gómez Alvarez',
         responsibleRole: 'Directora',
         email: 'mariela@camaguey.geocuba.cu',
+        phone: '52104017',
       },
       {
-        name: 'Departamento de Inversiones',
+        name: 'Dirección de Inversiones',
         type: 'DIRECCION_FUNCIONAL',
         responsibleName: 'Lázaro Companioni Ordaz',
         responsibleRole: 'Jefe de Grupo',
         email: 'ordaz@camaguey.geocuba.cu',
+        phone: '52177126',
       },
       {
         name: 'Dirección Técnico Productivo',
@@ -26,6 +46,7 @@ export async function POST() {
         responsibleName: 'Teresa Tórrez Rangel',
         responsibleRole: 'Directora',
         email: 'tere@camaguey.geocuba.cu',
+        phone: '52809694',
       },
       {
         name: 'Dirección de Mercado',
@@ -33,13 +54,32 @@ export async function POST() {
         responsibleName: 'Odalmis Bichara Guerra',
         responsibleRole: 'Directora',
         email: 'odalmis@camaguey.geocuba.cu',
+        phone: '59873154',
       },
       {
-        name: 'Departamento de Infocomunicaciones',
+        name: 'Dirección de Info-comunicaciones',
         type: 'DIRECCION_FUNCIONAL',
         responsibleName: 'Josefa Aguero',
         responsibleRole: 'Directora',
         email: 'josefa@camaguey.geocuba.cu',
+        phone: '52177114',
+      },
+      // Director General y Coordinador General
+      {
+        name: 'Director General',
+        type: 'DIRECCION_FUNCIONAL',
+        responsibleName: 'Director General',
+        responsibleRole: 'Director General',
+        email: 'director@camaguey.geocuba.cu',
+        phone: '',
+      },
+      {
+        name: 'Coordinador General',
+        type: 'DIRECCION_FUNCIONAL',
+        responsibleName: 'Coordinador General',
+        responsibleRole: 'Coordinador General',
+        email: 'coordinador@camaguey.geocuba.cu',
+        phone: '',
       },
       // UEB
       {
@@ -48,6 +88,7 @@ export async function POST() {
         responsibleName: 'Director',
         responsibleRole: 'Director',
         email: 'mdiaz@camaguey.geocuba.cu',
+        phone: '52105092',
       },
       {
         name: 'Agencia Provincial Camagüey',
@@ -55,6 +96,7 @@ export async function POST() {
         responsibleName: 'Director',
         responsibleRole: 'Director',
         email: 'erick@camaguey.geocuba.cu',
+        phone: '52177121',
       },
       {
         name: 'Agencia Gráfica',
@@ -62,6 +104,7 @@ export async function POST() {
         responsibleName: 'Directora',
         responsibleRole: 'Directora',
         email: 'taniac@camaguey.geocuba.cu',
+        phone: '52105094',
       },
       {
         name: 'Fábrica de Envases Flexibles',
@@ -69,6 +112,7 @@ export async function POST() {
         responsibleName: 'Directora',
         responsibleRole: 'Directora',
         email: 'debora@enflex.geocuba.cu',
+        phone: '52177111',
       },
       {
         name: 'Agencia Provincial Ciego de Ávila',
@@ -76,6 +120,7 @@ export async function POST() {
         responsibleName: 'Director',
         responsibleRole: 'Director',
         email: 'yadier@cavila.geocuba.cu',
+        phone: '50105111',
       },
       {
         name: 'Agencia ANAV Ayuda a la Navegación',
@@ -83,11 +128,13 @@ export async function POST() {
         responsibleName: 'Director',
         responsibleRole: 'Director',
         email: 'luciano@camaguey.geocuba.cu',
+        phone: '52104020',
       },
     ]
 
     const results = {
       created: 0,
+      updated: 0,
       skipped: 0,
       departments: [] as string[],
     }
@@ -102,7 +149,17 @@ export async function POST() {
         results.created++
         results.departments.push(data.name)
       } else {
-        results.skipped++
+        // Update existing with new data (phone, etc.)
+        await db.department.update({
+          where: { id: existing.id },
+          data: {
+            responsibleName: data.responsibleName,
+            responsibleRole: data.responsibleRole,
+            email: data.email,
+            phone: data.phone ?? null,
+          },
+        })
+        results.updated++
       }
     }
 

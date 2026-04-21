@@ -44,6 +44,7 @@ interface Department {
   responsibleName: string
   responsibleRole: string
   email: string
+  phone: string | null
   active: boolean
 }
 
@@ -431,8 +432,8 @@ function DashboardTab() {
           title="Total Solicitudes"
           value={stats.total}
           icon={FileText}
-          color="text-teal-700"
-          bgColor="bg-teal-100"
+          color="text-blue-700"
+          bgColor="bg-blue-100"
         />
         <MetricCard
           title="Cumplidas"
@@ -459,8 +460,8 @@ function DashboardTab() {
           title="Tasa Cumplimiento"
           value={`${stats.tasaCumplimiento}%`}
           icon={TrendingUp}
-          color="text-teal-700"
-          bgColor="bg-teal-100"
+          color="text-blue-700"
+          bgColor="bg-blue-100"
           subtitle={`${stats.cumplidas} de ${stats.total}`}
         />
       </div>
@@ -469,7 +470,7 @@ function DashboardTab() {
       {chartData.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Cumplimiento por Departamento</CardTitle>
+            <CardTitle className="text-sm font-semibold">Cumplimiento por Dirección</CardTitle>
             <CardDescription className="text-xs">Porcentaje de cumplimiento como proveedor</CardDescription>
           </CardHeader>
           <CardContent className="pt-0">
@@ -546,7 +547,7 @@ function DashboardTab() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <Activity className="size-4 text-teal-500" />
+            <Activity className="size-4 text-blue-500" />
             Actividad Reciente
           </CardTitle>
         </CardHeader>
@@ -609,7 +610,8 @@ function NuevaSolicitudTab() {
   const uebs = (departments || []).filter(d => d.type === 'UEB')
 
   // Available providers (excluding the requester)
-  const availableDirecciones = direcciones.filter(d => d.id !== form.requesterDeptId)
+  const availableSuperior = direcciones.filter(d => (d.name === 'Director General' || d.name === 'Coordinador General') && d.id !== form.requesterDeptId)
+  const availableDirecciones = direcciones.filter(d => d.name !== 'Director General' && d.name !== 'Coordinador General' && d.id !== form.requesterDeptId)
   const availableUebs = uebs.filter(d => d.id !== form.requesterDeptId)
 
   // Toggle a provider in the selection
@@ -687,8 +689,8 @@ function NuevaSolicitudTab() {
 
   const validate = () => {
     const newErrors: Record<string, string> = {}
-    if (!form.requesterDeptId) newErrors.requesterDeptId = 'Seleccione un departamento solicitante'
-    if (form.providerDeptIds.length === 0) newErrors.providerDeptIds = 'Seleccione al menos un departamento proveedor'
+    if (!form.requesterDeptId) newErrors.requesterDeptId = 'Seleccione una dirección solicitante'
+    if (form.providerDeptIds.length === 0) newErrors.providerDeptIds = 'Seleccione al menos una dirección proveedora'
     if (!form.description.trim()) newErrors.description = 'Ingrese una descripción'
     if (!form.deadlineDate) newErrors.deadlineDate = 'Seleccione una fecha límite'
     if (!form.priority) newErrors.priority = 'Seleccione una prioridad'
@@ -715,7 +717,7 @@ function NuevaSolicitudTab() {
         {/* Departamento Solicitante */}
         <div className="space-y-2">
           <Label htmlFor="requester" className="text-sm font-medium">
-            Departamento Solicitante *
+            Dirección Solicitante *
           </Label>
           <Select value={form.requesterDeptId} onValueChange={(v) => {
             setForm(f => ({
@@ -730,8 +732,15 @@ function NuevaSolicitudTab() {
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
+                <SelectLabel>Dirección Superior</SelectLabel>
+                {direcciones.filter(d => d.name === 'Director General' || d.name === 'Coordinador General').map(d => (
+                  <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                ))}
+              </SelectGroup>
+              <SelectSeparator />
+              <SelectGroup>
                 <SelectLabel>Direcciones Funcionales</SelectLabel>
-                {direcciones.map(d => (
+                {direcciones.filter(d => d.name !== 'Director General' && d.name !== 'Coordinador General').map(d => (
                   <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
                 ))}
               </SelectGroup>
@@ -751,10 +760,10 @@ function NuevaSolicitudTab() {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <Label className="text-sm font-medium">
-              Departamentos Proveedores *
+              Direcciones Proveedores *
             </Label>
             {form.providerDeptIds.length > 0 && (
-              <span className="text-xs text-teal-700 font-medium bg-teal-50 px-2 py-0.5 rounded-full">
+              <span className="text-xs text-blue-700 font-medium bg-blue-50 px-2 py-0.5 rounded-full">
                 {form.providerDeptIds.length} seleccionado{form.providerDeptIds.length > 1 ? 's' : ''}
               </span>
             )}
@@ -765,10 +774,51 @@ function NuevaSolicitudTab() {
               {!form.requesterDeptId ? (
                 <div className="p-4 text-center text-muted-foreground text-sm">
                   <Users className="size-5 mx-auto mb-1 opacity-50" />
-                  Seleccione primero un departamento solicitante
+                  Seleccione primero una dirección solicitante
                 </div>
               ) : (
                 <div className="divide-y">
+                  {/* Dirección Superior Group */}
+                  {availableSuperior.length > 0 && (
+                    <div className="p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                          <Shield className="size-3" />
+                          Dirección Superior
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-[11px] px-2 text-blue-700 hover:text-blue-800"
+                          onClick={() => toggleAllInGroup(availableSuperior, !isGroupAllSelected(availableSuperior))}
+                        >
+                          {isGroupAllSelected(availableSuperior) ? 'Ninguno' : 'Todos'}
+                        </Button>
+                      </div>
+                      <div className="space-y-1.5">
+                        {availableSuperior.map(d => (
+                          <label
+                            key={d.id}
+                            className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer transition-colors ${
+                              form.providerDeptIds.includes(d.id) ? 'bg-blue-50' : 'hover:bg-muted/50'
+                            }`}
+                          >
+                            <Checkbox
+                              checked={form.providerDeptIds.includes(d.id)}
+                              onCheckedChange={() => toggleProvider(d.id)}
+                              className="data-[state=checked]:bg-blue-700 data-[state=checked]:border-blue-700"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{d.name}</p>
+                              <p className="text-[11px] text-muted-foreground truncate">{d.responsibleName} · {d.email}</p>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Direcciones Funcionales Group */}
                   {availableDirecciones.length > 0 && (
                     <div className="p-3">
@@ -781,7 +831,7 @@ function NuevaSolicitudTab() {
                           type="button"
                           variant="ghost"
                           size="sm"
-                          className="h-6 text-[11px] px-2 text-teal-700 hover:text-teal-800"
+                          className="h-6 text-[11px] px-2 text-blue-700 hover:text-blue-800"
                           onClick={() => toggleAllInGroup(availableDirecciones, !isGroupAllSelected(availableDirecciones))}
                         >
                           {isGroupAllSelected(availableDirecciones) ? 'Ninguno' : 'Todos'}
@@ -792,13 +842,13 @@ function NuevaSolicitudTab() {
                           <label
                             key={d.id}
                             className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer transition-colors ${
-                              form.providerDeptIds.includes(d.id) ? 'bg-teal-50' : 'hover:bg-muted/50'
+                              form.providerDeptIds.includes(d.id) ? 'bg-blue-50' : 'hover:bg-muted/50'
                             }`}
                           >
                             <Checkbox
                               checked={form.providerDeptIds.includes(d.id)}
                               onCheckedChange={() => toggleProvider(d.id)}
-                              className="data-[state=checked]:bg-teal-700 data-[state=checked]:border-teal-700"
+                              className="data-[state=checked]:bg-blue-700 data-[state=checked]:border-blue-700"
                             />
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium truncate">{d.name}</p>
@@ -822,7 +872,7 @@ function NuevaSolicitudTab() {
                           type="button"
                           variant="ghost"
                           size="sm"
-                          className="h-6 text-[11px] px-2 text-teal-700 hover:text-teal-800"
+                          className="h-6 text-[11px] px-2 text-blue-700 hover:text-blue-800"
                           onClick={() => toggleAllInGroup(availableUebs, !isGroupAllSelected(availableUebs))}
                         >
                           {isGroupAllSelected(availableUebs) ? 'Ninguno' : 'Todos'}
@@ -833,13 +883,13 @@ function NuevaSolicitudTab() {
                           <label
                             key={d.id}
                             className={`flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer transition-colors ${
-                              form.providerDeptIds.includes(d.id) ? 'bg-teal-50' : 'hover:bg-muted/50'
+                              form.providerDeptIds.includes(d.id) ? 'bg-blue-50' : 'hover:bg-muted/50'
                             }`}
                           >
                             <Checkbox
                               checked={form.providerDeptIds.includes(d.id)}
                               onCheckedChange={() => toggleProvider(d.id)}
-                              className="data-[state=checked]:bg-teal-700 data-[state=checked]:border-teal-700"
+                              className="data-[state=checked]:bg-blue-700 data-[state=checked]:border-blue-700"
                             />
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium truncate">{d.name}</p>
@@ -859,7 +909,7 @@ function NuevaSolicitudTab() {
           {selectedProviderNames.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {selectedProviderNames.map((name, idx) => (
-                <Badge key={idx} variant="secondary" className="text-[11px] bg-teal-50 text-teal-800 hover:bg-teal-100 gap-1 pr-1">
+                <Badge key={idx} variant="secondary" className="text-[11px] bg-blue-50 text-blue-800 hover:bg-blue-100 gap-1 pr-1">
                   {name}
                   <button
                     type="button"
@@ -867,7 +917,7 @@ function NuevaSolicitudTab() {
                       const deptId = form.providerDeptIds[idx]
                       if (deptId) toggleProvider(deptId)
                     }}
-                    className="ml-0.5 rounded-full hover:bg-teal-200 p-0.5 transition-colors"
+                    className="ml-0.5 rounded-full hover:bg-blue-200 p-0.5 transition-colors"
                   >
                     <XCircle className="size-3" />
                   </button>
@@ -948,7 +998,7 @@ function NuevaSolicitudTab() {
         {/* Submit */}
         <Button
           type="submit"
-          className="w-full bg-teal-700 hover:bg-teal-800 text-white"
+          className="w-full bg-blue-700 hover:bg-blue-800 text-white"
           disabled={createRequest.isPending}
         >
           {createRequest.isPending ? (
@@ -1245,7 +1295,7 @@ function ReportesTab() {
           onClick={() => setReportSubTab('compliance')}
           className={`flex-1 py-2 px-3 text-sm font-medium rounded-md transition-all ${
             reportSubTab === 'compliance'
-              ? 'bg-background shadow-sm text-teal-700'
+              ? 'bg-background shadow-sm text-blue-700'
               : 'text-muted-foreground hover:text-foreground'
           }`}
         >
@@ -1256,7 +1306,7 @@ function ReportesTab() {
           onClick={() => setReportSubTab('affectation')}
           className={`flex-1 py-2 px-3 text-sm font-medium rounded-md transition-all ${
             reportSubTab === 'affectation'
-              ? 'bg-background shadow-sm text-teal-700'
+              ? 'bg-background shadow-sm text-blue-700'
               : 'text-muted-foreground hover:text-foreground'
           }`}
         >
@@ -1312,7 +1362,7 @@ function ComplianceReport() {
           size="sm"
           onClick={handleExportPDF}
           disabled={exporting}
-          className="text-teal-700 border-teal-200 hover:bg-teal-50"
+          className="text-blue-700 border-blue-200 hover:bg-blue-50"
         >
           {exporting ? (
             <Loader2 className="size-4 mr-1.5 animate-spin" />
@@ -1325,16 +1375,16 @@ function ComplianceReport() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <MetricCard title="Total" value={data.summary.total} icon={FileText} color="text-teal-700" bgColor="bg-teal-100" />
+        <MetricCard title="Total" value={data.summary.total} icon={FileText} color="text-blue-700" bgColor="bg-blue-100" />
         <MetricCard title="Cumplidas" value={data.summary.completed} icon={CheckCircle2} color="text-emerald-700" bgColor="bg-emerald-100" />
         <MetricCard title="Incumplidas" value={data.summary.incumplidas} icon={XCircle} color="text-red-700" bgColor="bg-red-100" />
-        <MetricCard title="Tasa" value={`${data.summary.rate}%`} icon={TrendingUp} color="text-teal-700" bgColor="bg-teal-100" />
+        <MetricCard title="Tasa" value={`${data.summary.rate}%`} icon={TrendingUp} color="text-blue-700" bgColor="bg-blue-100" />
       </div>
 
       {/* Department Cards */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold">Cumplimiento por Departamento (Proveedor)</CardTitle>
+          <CardTitle className="text-sm font-semibold">Cumplimiento por Dirección (Proveedor)</CardTitle>
         </CardHeader>
         <CardContent className="pt-0">
           {data.departments.length === 0 ? (
@@ -1491,7 +1541,7 @@ function AffectationReport() {
         <div className="text-center py-12">
           <CheckCircle2 className="size-12 text-emerald-500 mx-auto mb-3" />
           <p className="text-muted-foreground font-medium">Sin afectaciones registradas</p>
-          <p className="text-xs text-muted-foreground mt-1">Todos los departamentos están al día</p>
+          <p className="text-xs text-muted-foreground mt-1">Todas las direcciones están al día</p>
         </div>
       ) : (
         <ScrollArea className="max-h-[60vh]">
@@ -1624,7 +1674,7 @@ function DirectorioTab() {
     return (
       <div className="text-center py-12 p-4">
         <Building2 className="size-12 text-muted-foreground mx-auto mb-3" />
-        <p className="text-muted-foreground font-medium">No hay departamentos registrados</p>
+        <p className="text-muted-foreground font-medium">No hay direcciones registradas</p>
       </div>
     )
   }
@@ -1634,7 +1684,7 @@ function DirectorioTab() {
 
   return (
     <div className="space-y-4 p-4">
-      <h2 className="text-lg font-semibold">Directorio de Departamentos</h2>
+      <h2 className="text-lg font-semibold">Directorio de Direcciones</h2>
 
       {/* Direcciones Funcionales */}
       {direcciones.length > 0 && (
@@ -1679,17 +1729,19 @@ function DeptCard({ dept }: { dept: Department }) {
             <div className="flex items-center gap-1.5 mt-1.5 text-xs text-muted-foreground">
               <User className="size-3" />
               <span>{dept.responsibleName}</span>
+              <span className="text-muted-foreground/50">·</span>
+              <span className="italic">{dept.responsibleRole}</span>
             </div>
-            <div className="flex items-center gap-1.5 mt-1 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1">
+            {dept.phone && (
+              <div className="flex items-center gap-1.5 mt-1 text-xs text-muted-foreground">
                 <PhoneCall className="size-3" />
-                {dept.responsibleRole}
-              </span>
-            </div>
+                <span>{dept.phone}</span>
+              </div>
+            )}
           </div>
           <a
             href={`mailto:${dept.email}`}
-            className="flex items-center gap-1.5 text-xs text-teal-700 hover:text-teal-800 bg-teal-50 hover:bg-teal-100 px-2.5 py-1.5 rounded-md transition-colors flex-shrink-0"
+            className="flex items-center gap-1.5 text-xs text-blue-700 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2.5 py-1.5 rounded-md transition-colors flex-shrink-0"
           >
             <Mail className="size-3.5" />
             <span className="hidden sm:inline">{dept.email}</span>
@@ -1760,7 +1812,7 @@ export default function Home() {
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       {/* Header */}
-      <header className="bg-teal-800 text-white shadow-lg">
+      <header className="bg-blue-900 text-white shadow-lg">
         <div className="max-w-4xl mx-auto px-4 py-3">
           <div className="flex items-center gap-3">
             <div className="bg-white/10 p-2 rounded-lg">
@@ -1770,7 +1822,7 @@ export default function Home() {
               <h1 className="text-sm sm:text-base font-bold leading-tight truncate">
                 GEOCUBA Camagüey - Ciego de Ávila
               </h1>
-              <p className="text-[11px] sm:text-xs text-teal-200 leading-tight truncate">
+              <p className="text-[11px] sm:text-xs text-blue-200 leading-tight truncate">
                 Sistema de Control de Entrega de Informaciones
               </p>
             </div>
@@ -1790,7 +1842,7 @@ export default function Home() {
                     className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 ${
                       isActive
                         ? 'border-white text-white'
-                        : 'border-transparent text-teal-300 hover:text-white hover:border-teal-400'
+                        : 'border-transparent text-blue-300 hover:text-white hover:border-blue-400'
                     }`}
                   >
                     <item.icon className="size-4" />
@@ -1819,7 +1871,7 @@ export default function Home() {
       </main>
 
       {/* Footer */}
-      <footer className="bg-teal-900 text-teal-300 py-3 mt-auto">
+      <footer className="bg-blue-950 text-blue-300 py-3 mt-auto">
         <div className="max-w-4xl mx-auto px-4 text-center">
           <p className="text-[11px]">
             © {new Date().getFullYear()} GEOCUBA Camagüey - Ciego de Ávila · Sistema de Control de Entrega de Informaciones
@@ -1838,17 +1890,17 @@ export default function Home() {
                   key={item.id}
                   onClick={() => handleTabChange(item.id)}
                   className={`flex flex-col items-center justify-center py-2 px-1 min-w-[60px] transition-colors ${
-                    isActive ? 'text-teal-700' : 'text-muted-foreground'
+                    isActive ? 'text-blue-700' : 'text-muted-foreground'
                   }`}
                 >
-                  <item.icon className={`size-5 ${isActive ? 'text-teal-700' : ''}`} />
-                  <span className={`text-[10px] mt-0.5 font-medium ${isActive ? 'text-teal-700' : ''}`}>
+                  <item.icon className={`size-5 ${isActive ? 'text-blue-700' : ''}`} />
+                  <span className={`text-[10px] mt-0.5 font-medium ${isActive ? 'text-blue-700' : ''}`}>
                     {item.label}
                   </span>
                   {isActive && (
                     <motion.div
                       layoutId="activeTabIndicator"
-                      className="w-4 h-0.5 bg-teal-700 rounded-full mt-0.5"
+                      className="w-4 h-0.5 bg-blue-700 rounded-full mt-0.5"
                     />
                   )}
                 </button>

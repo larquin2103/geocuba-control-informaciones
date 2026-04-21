@@ -10,7 +10,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Tipos de departamentos
+// Tipos de direcciones/unidades
 // DIRECCION_FUNCIONAL = Direcciones funcionales que solicitan/entregan información
 // UEB = Unidades Empresariales de Base
 model Department {
@@ -20,6 +20,7 @@ model Department {
   responsibleName String   // Nombre del responsable
   responsibleRole String   // Cargo del responsable
   email           String   // Correo electrónico del responsable
+  phone           String?  // Teléfono del responsable
   active          Boolean  @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
