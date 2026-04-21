@@ -71,7 +71,7 @@ export async function POST(request: Request) {
     }
 
     // Create a request for each provider department
-    const createdRequests = []
+    const createdRequests: Record<string, unknown>[] = []
 
     for (const providerId of providerIds) {
       const newRequest = await db.informationRequest.create({

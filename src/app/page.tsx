@@ -566,7 +566,7 @@ function DashboardTab() {
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium truncate">{activity.request.description}</p>
                         <p className="text-[11px] text-muted-foreground">
-                          {activity.request.providerDept.name} → {activity.requesterDept ? activity.request.requesterDept.name : ''}
+                          {activity.request.providerDept.name} → {activity.request.requesterDept.name}
                         </p>
                       </div>
                       <span className="text-[10px] text-muted-foreground whitespace-nowrap">
