@@ -10,7 +10,7 @@ fi
 # Start production server with auto-restart
 while true; do
   echo "Starting Next.js production server..."
-  NODE_OPTIONS="--max-old-space-size=2048" npx next start -p 3000 -H 0.0.0.0
+  npx next start -p 3000 -H 0.0.0.0
   EXIT_CODE=$?
   echo "Server exited with code $EXIT_CODE, restarting in 3 seconds..."
   sleep 3
