@@ -1,10 +1,11 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
+import { sendEmail, overdueTemplate, deadlineApproachingTemplate } from '@/lib/email'
 
 // POST /api/requests/update-statuses - Auto status update
 // Check all SOLICITADO and EN_FECHA requests and update:
-// - If deadlineDate > today but within 3 days → EN_FECHA
-// - If deadlineDate < today → INCUMPLIDO (and create AffectationRecord with 0.1 affectation)
+// - If deadlineDate > today but within 3 days → EN_FECHA (send notification)
+// - If deadlineDate < today → INCUMPLIDO (and create AffectationRecord, send notification)
 // - Calculate cumulative affectation and flag if >= 0.3 for commission review
 export async function POST() {
   try {
@@ -18,6 +19,8 @@ export async function POST() {
       updatedToIncumplido: 0,
       affectationRecordsCreated: 0,
       flaggedForCommission: 0,
+      emailsSent: 0,
+      emailsFailed: 0,
       errors: [] as string[],
     }
 
@@ -97,6 +100,46 @@ export async function POST() {
           if (requiresCommission) {
             results.flaggedForCommission++
           }
+
+          // Send INCUMPLIDO notification email to provider
+          const emailData = {
+            requestDescription: req.description,
+            requesterDeptName: req.requesterDept.name,
+            providerDeptName: req.providerDept.name,
+            deadlineDate: req.deadlineDate.toISOString(),
+            priority: req.priority,
+            requestId: req.id,
+            currentStatus: 'INCUMPLIDO',
+          }
+
+          const subject = `INCUMPLIMIENTO - Solicitud vencida: ${req.description.substring(0, 50)}${req.description.length > 50 ? '...' : ''}`
+          const html = overdueTemplate(emailData)
+
+          const emailResult = await sendEmail({
+            to: req.providerDept.email,
+            subject,
+            html,
+            emailType: 'NOTIFICACION',
+          })
+
+          // Log the email
+          await db.emailLog.create({
+            data: {
+              requestId: req.id,
+              recipientEmail: req.providerDept.email,
+              subject,
+              emailType: 'NOTIFICACION',
+              success: emailResult.success,
+              error: emailResult.error || null,
+            },
+          })
+
+          if (emailResult.success) {
+            results.emailsSent++
+          } else {
+            results.emailsFailed++
+          }
+
         } else if (deadlineDateOnly <= threeDaysFromNow && deadlineDateOnly >= today) {
           // Within 3 days → EN_FECHA (only if currently SOLICITADO)
           if (req.status === 'SOLICITADO') {
@@ -115,6 +158,45 @@ export async function POST() {
             })
 
             results.updatedToEnFecha++
+
+            // Send EN_FECHA notification to provider
+            const emailData = {
+              requestDescription: req.description,
+              requesterDeptName: req.requesterDept.name,
+              providerDeptName: req.providerDept.name,
+              deadlineDate: req.deadlineDate.toISOString(),
+              priority: req.priority,
+              requestId: req.id,
+              currentStatus: 'EN_FECHA',
+            }
+
+            const subject = `PLAZO PRÓXIMO - Solicitud por vencer: ${req.description.substring(0, 50)}${req.description.length > 50 ? '...' : ''}`
+            const html = deadlineApproachingTemplate(emailData)
+
+            const emailResult = await sendEmail({
+              to: req.providerDept.email,
+              subject,
+              html,
+              emailType: 'NOTIFICACION',
+            })
+
+            // Log the email
+            await db.emailLog.create({
+              data: {
+                requestId: req.id,
+                recipientEmail: req.providerDept.email,
+                subject,
+                emailType: 'NOTIFICACION',
+                success: emailResult.success,
+                error: emailResult.error || null,
+              },
+            })
+
+            if (emailResult.success) {
+              results.emailsSent++
+            } else {
+              results.emailsFailed++
+            }
           }
         }
       } catch (err) {

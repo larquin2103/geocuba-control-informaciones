@@ -1,7 +1,8 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { sendEmail, reminderTemplate } from '@/lib/email'
 
-// POST /api/email/remind - Send reminder email for a specific request (simulated)
+// POST /api/email/remind - Send reminder email for a specific request
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -36,22 +37,51 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create email log (simulated - just log it)
+    // Build email data
+    const emailData = {
+      requestDescription: existingRequest.description,
+      requesterDeptName: existingRequest.requesterDept.name,
+      providerDeptName: existingRequest.providerDept.name,
+      deadlineDate: existingRequest.deadlineDate.toISOString(),
+      priority: existingRequest.priority,
+      requestId: existingRequest.id,
+      currentStatus: existingRequest.status,
+      customMessage: message || undefined,
+    }
+
+    const subject = `RECORDATORIO - Solicitud pendiente: ${existingRequest.description.substring(0, 50)}${existingRequest.description.length > 50 ? '...' : ''}`
+    const html = reminderTemplate(emailData)
+
+    // Send the real email
+    const result = await sendEmail({
+      to: existingRequest.providerDept.email,
+      subject,
+      html,
+      emailType: 'RECORDATORIO',
+    })
+
+    // Create email log
     const emailLog = await db.emailLog.create({
       data: {
         requestId,
         recipientEmail: existingRequest.providerDept.email,
-        subject: `RECORDATORIO - Solicitud pendiente: ${existingRequest.description.substring(0, 50)}`,
+        subject,
         emailType: 'RECORDATORIO',
-        success: true,
+        success: result.success,
+        error: result.error || null,
       },
     })
 
-    // Log to console (simulated email sending)
-    console.log(`[EMAIL REMINDER] To: ${existingRequest.providerDept.email}, Subject: ${emailLog.subject}, Message: ${message || 'No custom message'}`)
+    if (!result.success) {
+      return NextResponse.json({
+        message: 'Reminder email failed to send',
+        emailLog,
+        error: result.error,
+      }, { status: 500 })
+    }
 
     return NextResponse.json({
-      message: 'Reminder email sent successfully (simulated)',
+      message: 'Reminder email sent successfully',
       emailLog,
       recipient: existingRequest.providerDept.email,
       requestDescription: existingRequest.description,

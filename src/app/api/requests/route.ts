@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
+import { sendEmail, newRequestTemplate } from '@/lib/email'
 
 export async function GET(request: Request) {
   try {
@@ -60,7 +61,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'El departamento proveedor no puede ser el mismo que el solicitante' }, { status: 400 })
     }
 
-    // Verify all departments exist
+    // Verify all departments exist and get their details for email
     const allDeptIds = [requesterDeptId, ...providerIds]
     const departments = await db.department.findMany({
       where: { id: { in: allDeptIds } },
@@ -70,10 +71,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Uno o más departamentos no existen' }, { status: 400 })
     }
 
+    const requesterDept = departments.find(d => d.id === requesterDeptId)!
+
     // Create a request for each provider department
     const createdRequests: Record<string, unknown>[] = []
+    const emailResults: { provider: string; email: string; sent: boolean }[] = []
 
     for (const providerId of providerIds) {
+      const providerDept = departments.find(d => d.id === providerId)!
+
       const newRequest = await db.informationRequest.create({
         data: {
           requesterDeptId,
@@ -85,7 +91,7 @@ export async function POST(request: Request) {
         },
         include: {
           requesterDept: { select: { name: true } },
-          providerDept: { select: { name: true } },
+          providerDept: { select: { name: true, email: true } },
         },
       })
 
@@ -98,12 +104,52 @@ export async function POST(request: Request) {
         },
       })
 
+      // Send notification email to the provider
+      const emailData = {
+        requestDescription: description,
+        requesterDeptName: requesterDept.name,
+        providerDeptName: providerDept.name,
+        deadlineDate,
+        priority,
+        requestId: newRequest.id,
+        currentStatus: 'SOLICITADO',
+      }
+
+      const subject = `Nueva solicitud de información - ${description.substring(0, 50)}${description.length > 50 ? '...' : ''}`
+      const html = newRequestTemplate(emailData)
+
+      const emailResult = await sendEmail({
+        to: providerDept.email,
+        subject,
+        html,
+        emailType: 'NOTIFICACION',
+      })
+
+      // Log the email
+      await db.emailLog.create({
+        data: {
+          requestId: newRequest.id,
+          recipientEmail: providerDept.email,
+          subject,
+          emailType: 'NOTIFICACION',
+          success: emailResult.success,
+          error: emailResult.error || null,
+        },
+      })
+
+      emailResults.push({
+        provider: providerDept.name,
+        email: providerDept.email,
+        sent: emailResult.success,
+      })
+
       createdRequests.push(newRequest)
     }
 
     return NextResponse.json({
       created: createdRequests.length,
       requests: createdRequests,
+      emailNotifications: emailResults,
     }, { status: 201 })
   } catch (error) {
     console.error('Error creating request:', error)

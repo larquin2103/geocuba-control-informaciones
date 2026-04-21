@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { sendEmail, completionTemplate } from '@/lib/email'
 
 // POST /api/requests/[id]/complete - Mark a request as CUMPLIDO
 export async function POST(
@@ -35,6 +36,29 @@ export async function POST(
 
     const previousStatus = existingRequest.status
 
+    // Build email data
+    const emailData = {
+      requestDescription: existingRequest.description,
+      requesterDeptName: existingRequest.requesterDept.name,
+      providerDeptName: existingRequest.providerDept.name,
+      deadlineDate: existingRequest.deadlineDate.toISOString(),
+      priority: existingRequest.priority,
+      requestId: existingRequest.id,
+      currentStatus: 'CUMPLIDO',
+    }
+
+    const subject = `Solicitud completada - ${existingRequest.description.substring(0, 50)}${existingRequest.description.length > 50 ? '...' : ''}`
+    const html = completionTemplate(emailData)
+
+    // Send confirmation email to the requester
+    const emailResult = await sendEmail({
+      to: existingRequest.requesterDept.email,
+      subject,
+      html,
+      emailType: 'CONFIRMACION',
+    })
+
+    // Update the request and create log in a transaction
     const updatedRequest = await db.informationRequest.update({
       where: { id },
       data: {
@@ -51,9 +75,10 @@ export async function POST(
         emailLogs: {
           create: {
             recipientEmail: existingRequest.requesterDept.email,
-            subject: `Solicitud completada - ${existingRequest.description.substring(0, 50)}`,
+            subject,
             emailType: 'CONFIRMACION',
-            success: true,
+            success: emailResult.success,
+            error: emailResult.error || null,
           },
         },
       },
