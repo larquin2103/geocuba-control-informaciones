@@ -22,3 +22,28 @@ Stage Summary:
 - Application now displays correctly in the preview panel
 - Key fixes: Turbopack → Webpack, removed pipe in dev script, optimized API queries
 - Server running on port 3000, accessible via Caddy on port 81
+---
+Task ID: 1
+Agent: Main Agent
+Task: Create permanent deployment solution for the site
+
+Work Log:
+- Diagnosed root cause: server process was dying when parent shell session ended
+- Previous approach using `npx next start` had 3 issues: slow startup (~500ms), dependency on npm subprocess, process instability
+- Switched to Next.js standalone build (`output: "standalone"` in next.config.ts)
+- Standalone build generates an autonomous `server.js` that runs directly with Node.js
+- Startup time improved from ~500ms to ~69ms
+- Created robust start.sh using `start-stop-daemon` for persistent daemon process
+- Added auto-restart loop with logging in case of crashes
+- Fixed TypeScript errors: activity.requesterDept → activity.request.requesterDept, createdRequests type annotation
+- Updated package.json scripts to work with standalone build
+- All endpoints verified working: departments, stats, requests, compliance, affectation
+- CSS files loading correctly (108KB + 2KB)
+- 0 restarts after deployment - server is stable
+
+Stage Summary:
+- Next.js standalone build configured and working
+- Server starts in 69ms (7x faster than before)
+- Process persists via start-stop-daemon with auto-restart
+- All APIs functional, CSS loading properly
+- Zero server restarts = stable deployment

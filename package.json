@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "bash start.sh",
-    "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
-    "start": "NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log",
+    "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/ && cp -r prisma .next/standalone/ && cp -r db .next/standalone/",
+    "start": "cd .next/standalone && NODE_ENV=production HOSTNAME=0.0.0.0 PORT=3000 node server.js",
     "lint": "eslint .",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
