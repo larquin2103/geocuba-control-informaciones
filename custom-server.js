@@ -1,6 +1,6 @@
-const { createServer } = require('http');
-const { parse } = require('url');
-const next = require('next');
+const { createServer } = require('http') // eslint-disable-line @typescript-eslint/no-require-imports
+const { parse } = require('url') // eslint-disable-line @typescript-eslint/no-require-imports
+const next = require('next') // eslint-disable-line @typescript-eslint/no-require-imports
 
 const dev = process.argv.includes('--dev');
 const hostname = '0.0.0.0';

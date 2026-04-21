@@ -7,11 +7,17 @@ if [ ! -f ".next/BUILD_ID" ]; then
   NODE_OPTIONS="--max-old-space-size=7168" npx next build
 fi
 
+# Kill any existing server on port 3000
+fuser -k 3000/tcp 2>/dev/null || true
+sleep 1
+
 # Start production server with auto-restart
 while true; do
   echo "Starting Next.js production server..."
-  npx next start -p 3000 -H 0.0.0.0
+  exec npx next start -p 3000 -H 0.0.0.0
   EXIT_CODE=$?
   echo "Server exited with code $EXIT_CODE, restarting in 3 seconds..."
   sleep 3
+  fuser -k 3000/tcp 2>/dev/null || true
+  sleep 1
 done
