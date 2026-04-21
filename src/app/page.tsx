@@ -1,12 +1,11 @@
 'use client'
 
-import React, { useEffect, useCallback, useState } from 'react'
+import React, { useEffect, useCallback, useState, Suspense } from 'react'
+import dynamic from 'next/dynamic'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { create } from 'zustand'
 import { format, formatDistanceToNow, isPast, isWithinInterval, addDays, differenceInDays } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { motion, AnimatePresence } from 'framer-motion'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { toast } from 'sonner'
 import {
   LayoutDashboard, FilePlus, ListChecks, BarChart3, Phone,
@@ -32,6 +31,16 @@ import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useIsMobile } from '@/hooks/use-mobile'
+
+// Lazy load heavy components
+const ComplianceChart = dynamic(() => import('@/components/compliance-chart'), {
+  loading: () => <Skeleton className="h-72 rounded-xl" />,
+  ssr: false,
+})
+
+const MobileTabIndicator = dynamic(() => import('@/components/mobile-tab-indicator'), {
+  ssr: false,
+})
 
 // ============================================================================
 // TYPES
@@ -211,6 +220,23 @@ function formatDateShort(date: string | Date): string {
 
 function formatRelative(date: string | Date): string {
   return formatDistanceToNow(new Date(date), { addSuffix: true, locale: es })
+}
+
+// ============================================================================
+// CSS TRANSITION HELPERS (replacing framer-motion)
+// ============================================================================
+
+/** Collapsible section using CSS max-height transition */
+function CollapsibleSection({ show, children }: { show: boolean; children: React.ReactNode }) {
+  return (
+    <div
+      className={`overflow-hidden transition-[max-height,opacity] duration-200 ease-in-out ${
+        show ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'
+      }`}
+    >
+      {children}
+    </div>
+  )
 }
 
 // ============================================================================
@@ -466,39 +492,8 @@ function DashboardTab() {
         />
       </div>
 
-      {/* Compliance Chart */}
-      {chartData.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Cumplimiento por Dirección</CardTitle>
-            <CardDescription className="text-xs">Porcentaje de cumplimiento como proveedor</CardDescription>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="h-64 sm:h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                  <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} fontSize={11} />
-                  <YAxis type="category" dataKey="name" width={110} fontSize={10} />
-                  <Tooltip
-                    formatter={(value: number, name: string) => [`${value}%`, name === 'cumplimiento' ? 'Cumplimiento' : 'Incumplimiento']}
-                    labelFormatter={(label: string) => chartData.find(d => d.name === label)?.fullName || label}
-                  />
-                  <Bar dataKey="cumplimiento" stackId="a" radius={[0, 0, 0, 0]}>
-                    {chartData.map((entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={entry.cumplimiento >= 80 ? '#059669' : entry.cumplimiento >= 50 ? '#d97706' : '#dc2626'}
-                      />
-                    ))}
-                  </Bar>
-                  <Bar dataKey="incumplimiento" stackId="a" fill="#e5e7eb" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* Compliance Chart - lazy loaded */}
+      {chartData.length > 0 && <ComplianceChart data={chartData} />}
 
       {/* Upcoming Deadlines */}
       <Card>
@@ -1132,7 +1127,7 @@ function SolicitudesTab() {
         </Select>
       </div>
 
-      {/* Request Cards */}
+      {/* Request Cards - using CSS transitions instead of framer-motion */}
       {!requests || requests.length === 0 ? (
         <div className="text-center py-12">
           <ListChecks className="size-12 text-muted-foreground mx-auto mb-3" />
@@ -1141,137 +1136,121 @@ function SolicitudesTab() {
         </div>
       ) : (
         <div className="space-y-3">
-          <AnimatePresence mode="popLayout">
-            {requests.map((req) => {
-              const isExpanded = expandedRequestId === req.id
-              const deadline = new Date(req.deadlineDate)
-              const isOverdue = isPast(deadline) && req.status !== 'CUMPLIDO'
-              const daysLeft = differenceInDays(deadline, new Date())
+          {requests.map((req) => {
+            const isExpanded = expandedRequestId === req.id
+            const deadline = new Date(req.deadlineDate)
+            const isOverdue = isPast(deadline) && req.status !== 'CUMPLIDO'
+            const daysLeft = differenceInDays(deadline, new Date())
 
-              return (
-                <motion.div
-                  key={req.id}
-                  layout
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <Card className={`py-3 gap-2 overflow-hidden ${isOverdue ? 'border-red-200' : ''}`}>
-                    <CardContent className="p-4 pt-0">
-                      {/* Header Row */}
-                      <div
-                        className="flex items-start justify-between gap-2 cursor-pointer"
-                        onClick={() => setExpandedRequestId(isExpanded ? null : req.id)}
-                      >
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium line-clamp-2">{req.description}</p>
-                          <div className="flex items-center gap-1.5 mt-1.5 text-xs text-muted-foreground">
-                            <span className="truncate max-w-[120px]">{req.requesterDept.name}</span>
-                            <ArrowRight className="size-3 flex-shrink-0" />
-                            <span className="truncate max-w-[120px]">{req.providerDept.name}</span>
+            return (
+              <div
+                key={req.id}
+                className="animate-in fade-in slide-in-from-bottom-2 duration-200"
+              >
+                <Card className={`py-3 gap-2 overflow-hidden ${isOverdue ? 'border-red-200' : ''}`}>
+                  <CardContent className="p-4 pt-0">
+                    {/* Header Row */}
+                    <div
+                      className="flex items-start justify-between gap-2 cursor-pointer"
+                      onClick={() => setExpandedRequestId(isExpanded ? null : req.id)}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium line-clamp-2">{req.description}</p>
+                        <div className="flex items-center gap-1.5 mt-1.5 text-xs text-muted-foreground">
+                          <span className="truncate max-w-[120px]">{req.requesterDept.name}</span>
+                          <ArrowRight className="size-3 flex-shrink-0" />
+                          <span className="truncate max-w-[120px]">{req.providerDept.name}</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                        <StatusBadge status={req.status} />
+                        {isExpanded ? (
+                          <ChevronUp className="size-4 text-muted-foreground" />
+                        ) : (
+                          <ChevronDown className="size-4 text-muted-foreground" />
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Bottom Row */}
+                    <div className="flex items-center justify-between mt-2.5">
+                      <div className="flex items-center gap-2">
+                        <PriorityBadge priority={req.priority} />
+                        <span className={`text-xs font-medium ${getDeadlineColor(req.deadlineDate)}`}>
+                          {isOverdue ? `Vencida hace ${Math.abs(daysLeft)}d` : daysLeft === 0 ? 'Vence hoy' : `${daysLeft}d restantes`}
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-muted-foreground">{formatDateShort(req.deadlineDate)}</span>
+                    </div>
+
+                    {/* Expanded Details - CSS transition instead of AnimatePresence */}
+                    <CollapsibleSection show={isExpanded}>
+                      <Separator className="my-3" />
+                      <div className="space-y-2.5 text-sm">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Solicitante</p>
+                            <p className="font-medium text-xs">{req.requesterDept.name}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Proveedor</p>
+                            <p className="font-medium text-xs">{req.providerDept.name}</p>
                           </div>
                         </div>
-                        <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                          <StatusBadge status={req.status} />
-                          {isExpanded ? (
-                            <ChevronUp className="size-4 text-muted-foreground" />
-                          ) : (
-                            <ChevronDown className="size-4 text-muted-foreground" />
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Fecha Límite</p>
+                            <p className="font-medium text-xs">{formatDate(req.deadlineDate)}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Creada</p>
+                            <p className="font-medium text-xs">{formatRelative(req.createdAt)}</p>
+                          </div>
+                        </div>
+                        {req.completedAt && (
+                          <div>
+                            <p className="text-xs text-muted-foreground">Completada</p>
+                            <p className="font-medium text-xs">{formatDate(req.completedAt)}</p>
+                          </div>
+                        )}
+                        {req.completedNotes && (
+                          <div>
+                            <p className="text-xs text-muted-foreground">Notas</p>
+                            <p className="text-xs">{req.completedNotes}</p>
+                          </div>
+                        )}
+                        <div className="flex gap-2 pt-1">
+                          {req.status !== 'CUMPLIDO' && (
+                            <Button
+                              size="sm"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8"
+                              onClick={() => handleComplete(req.id)}
+                              disabled={completeRequest.isPending}
+                            >
+                              <CheckCircle2 className="size-3.5 mr-1" />
+                              Marcar Cumplida
+                            </Button>
+                          )}
+                          {req.status !== 'CUMPLIDO' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs h-8"
+                              onClick={() => sendReminder.mutate(req.id)}
+                              disabled={sendReminder.isPending}
+                            >
+                              <Bell className="size-3.5 mr-1" />
+                              Recordar
+                            </Button>
                           )}
                         </div>
                       </div>
-
-                      {/* Bottom Row */}
-                      <div className="flex items-center justify-between mt-2.5">
-                        <div className="flex items-center gap-2">
-                          <PriorityBadge priority={req.priority} />
-                          <span className={`text-xs font-medium ${getDeadlineColor(req.deadlineDate)}`}>
-                            {isOverdue ? `Vencida hace ${Math.abs(daysLeft)}d` : daysLeft === 0 ? 'Vence hoy' : `${daysLeft}d restantes`}
-                          </span>
-                        </div>
-                        <span className="text-[11px] text-muted-foreground">{formatDateShort(req.deadlineDate)}</span>
-                      </div>
-
-                      {/* Expanded Details */}
-                      <AnimatePresence>
-                        {isExpanded && (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.2 }}
-                            className="overflow-hidden"
-                          >
-                            <Separator className="my-3" />
-                            <div className="space-y-2.5 text-sm">
-                              <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                  <p className="text-xs text-muted-foreground">Solicitante</p>
-                                  <p className="font-medium text-xs">{req.requesterDept.name}</p>
-                                </div>
-                                <div>
-                                  <p className="text-xs text-muted-foreground">Proveedor</p>
-                                  <p className="font-medium text-xs">{req.providerDept.name}</p>
-                                </div>
-                              </div>
-                              <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                  <p className="text-xs text-muted-foreground">Fecha Límite</p>
-                                  <p className="font-medium text-xs">{formatDate(req.deadlineDate)}</p>
-                                </div>
-                                <div>
-                                  <p className="text-xs text-muted-foreground">Creada</p>
-                                  <p className="font-medium text-xs">{formatRelative(req.createdAt)}</p>
-                                </div>
-                              </div>
-                              {req.completedAt && (
-                                <div>
-                                  <p className="text-xs text-muted-foreground">Completada</p>
-                                  <p className="font-medium text-xs">{formatDate(req.completedAt)}</p>
-                                </div>
-                              )}
-                              {req.completedNotes && (
-                                <div>
-                                  <p className="text-xs text-muted-foreground">Notas</p>
-                                  <p className="text-xs">{req.completedNotes}</p>
-                                </div>
-                              )}
-                              <div className="flex gap-2 pt-1">
-                                {req.status !== 'CUMPLIDO' && (
-                                  <Button
-                                    size="sm"
-                                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8"
-                                    onClick={() => handleComplete(req.id)}
-                                    disabled={completeRequest.isPending}
-                                  >
-                                    <CheckCircle2 className="size-3.5 mr-1" />
-                                    Marcar Cumplida
-                                  </Button>
-                                )}
-                                {req.status !== 'CUMPLIDO' && (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="text-xs h-8"
-                                    onClick={() => sendReminder.mutate(req.id)}
-                                    disabled={sendReminder.isPending}
-                                  >
-                                    <Bell className="size-3.5 mr-1" />
-                                    Recordar
-                                  </Button>
-                                )}
-                              </div>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              )
-            })}
-          </AnimatePresence>
+                    </CollapsibleSection>
+                  </CardContent>
+                </Card>
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
@@ -1610,35 +1589,25 @@ function AffectationDepartmentCard({ dept }: {
           </div>
         </div>
 
-        {/* Expanded Details */}
-        <AnimatePresence>
-          {expanded && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="overflow-hidden"
-            >
-              <Separator className="my-2" />
-              <p className="text-xs font-medium text-muted-foreground mb-2">Detalle de Incumplimientos:</p>
-              <div className="space-y-2">
-                {dept.records.map((rec) => (
-                  <div key={rec.id} className="p-2 rounded-md bg-red-50 text-xs space-y-1">
-                    <p className="font-medium">{rec.requestDescription}</p>
-                    <div className="flex justify-between text-muted-foreground">
-                      <span>Solicitado por: {rec.requesterDeptName}</span>
-                    </div>
-                    <div className="flex justify-between text-muted-foreground">
-                      <span>Vencimiento: {formatDateShort(rec.deadlineDate)}</span>
-                      <span>Afectación: +{rec.affectationValue.toFixed(1)}</span>
-                    </div>
-                  </div>
-                ))}
+        {/* Expanded Details - CSS transition instead of AnimatePresence */}
+        <CollapsibleSection show={expanded}>
+          <Separator className="my-2" />
+          <p className="text-xs font-medium text-muted-foreground mb-2">Detalle de Incumplimientos:</p>
+          <div className="space-y-2">
+            {dept.records.map((rec) => (
+              <div key={rec.id} className="p-2 rounded-md bg-red-50 text-xs space-y-1">
+                <p className="font-medium">{rec.requestDescription}</p>
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Solicitado por: {rec.requesterDeptName}</span>
+                </div>
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Vencimiento: {formatDateShort(rec.deadlineDate)}</span>
+                  <span>Afectación: +{rec.affectationValue.toFixed(1)}</span>
+                </div>
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+            ))}
+          </div>
+        </CollapsibleSection>
       </CardContent>
     </Card>
   )
@@ -1855,19 +1824,14 @@ export default function Home() {
         )}
       </header>
 
-      {/* Main Content */}
+      {/* Main Content - CSS transition instead of AnimatePresence */}
       <main className="flex-1 max-w-4xl mx-auto w-full pb-20 sm:pb-4">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.15 }}
-          >
-            {tabContent[activeTab]}
-          </motion.div>
-        </AnimatePresence>
+        <div
+          key={activeTab}
+          className="animate-in fade-in duration-150"
+        >
+          {tabContent[activeTab]}
+        </div>
       </main>
 
       {/* Footer */}
@@ -1897,12 +1861,7 @@ export default function Home() {
                   <span className={`text-[10px] mt-0.5 font-medium ${isActive ? 'text-blue-700' : ''}`}>
                     {item.label}
                   </span>
-                  {isActive && (
-                    <motion.div
-                      layoutId="activeTabIndicator"
-                      className="w-4 h-0.5 bg-blue-700 rounded-full mt-0.5"
-                    />
-                  )}
+                  {isActive && <MobileTabIndicator />}
                 </button>
               )
             })}

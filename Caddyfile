@@ -9,6 +9,9 @@
 			header_up X-Forwarded-For {remote_host}
 			header_up X-Forwarded-Proto {scheme}
 			header_up X-Real-IP {remote_host}
+			transport http {
+				versions 1.1
+			}
 		}
 	}
 
@@ -18,6 +21,9 @@
 			header_up X-Forwarded-For {remote_host}
 			header_up X-Forwarded-Proto {scheme}
 			header_up X-Real-IP {remote_host}
+			transport http {
+				versions 1.1
+			}
 		}
 	}
 }
