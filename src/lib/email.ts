@@ -1,14 +1,11 @@
 import nodemailer from 'nodemailer'
-import { Resend } from 'resend'
 
 // ============================================================================
-// EMAIL CONFIGURATION
+// EMAIL CONFIGURATION - SMTP GEOCUBA Exchange Server
 // ============================================================================
 
-const EMAIL_PROVIDER = process.env.EMAIL_PROVIDER || 'smtp' // 'smtp' or 'resend'
 const APP_NAME = 'GEOCUBA Camagüey - Ciego de Ávila'
 
-// SMTP Configuration (GEOCUBA Exchange Server)
 const SMTP_CONFIG = {
   host: process.env.SMTP_HOST || '192.168.7.4',
   port: parseInt(process.env.SMTP_PORT || '25'),
@@ -29,11 +26,7 @@ const SMTP_CONFIG = {
 
 const SMTP_FROM = process.env.SMTP_FROM || `GEOCUBA CM-CA <${SMTP_CONFIG.auth.user}>`
 
-// Resend Configuration (alternative)
-const RESEND_FROM = process.env.EMAIL_FROM || 'GEOCUBA CM-CA <onboarding@resend.dev>'
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
-
-// Create reusable SMTP transporter
+// Create reusable SMTP transporter (lazy initialization)
 let transporter: nodemailer.Transporter | null = null
 
 function getTransporter(): nodemailer.Transporter {
@@ -60,7 +53,7 @@ interface EmailParams {
   to: string | string[]
   subject: string
   html: string
-  emailType: 'RECORDATORIO' | 'NOTIFICACION' | 'CONFIRMACION'
+  emailType: 'RECORDATORIO' | 'NOTIFICACION' | 'CONFIRMACION' | 'EN_FECHA' | 'INCUMPLIDO'
 }
 
 interface RequestEmailData {
@@ -125,7 +118,7 @@ function baseTemplate(title: string, content: string, footer?: string): string {
   <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f1f5f9;padding:24px 0;">
     <tr>
       <td align="center">
-        <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);max-width:100%;">
           <!-- Header -->
           <tr>
             <td style="background:linear-gradient(135deg,#1e3a5f 0%,#1e40af 100%);padding:24px 32px;">
@@ -339,13 +332,14 @@ export function deadlineApproachingTemplate(data: RequestEmailData): string {
 }
 
 // ============================================================================
-// SEND EMAIL FUNCTIONS
+// SEND EMAIL FUNCTION - SMTP ONLY (Production)
 // ============================================================================
 
 /**
  * Send email via SMTP (GEOCUBA Exchange Server)
+ * Production-ready - sends directly to any internal GEOCUBA address
  */
-async function sendViaSmtp(params: EmailParams): Promise<{ success: boolean; error?: string }> {
+export async function sendEmail(params: EmailParams): Promise<{ success: boolean; error?: string }> {
   try {
     const { to, subject, html, emailType } = params
     const recipients = Array.isArray(to) ? to : [to]
@@ -359,7 +353,7 @@ async function sendViaSmtp(params: EmailParams): Promise<{ success: boolean; err
       html,
       headers: {
         'X-Mailer': 'GEOCUBA-SCEI',
-        'X-Priority': emailType === 'RECORDATORIO' ? '1' : '3',
+        'X-Priority': emailType === 'RECORDATORIO' ? '1' : emailType === 'INCUMPLIDO' ? '1' : '3',
         'X-Email-Type': emailType,
       },
     })
@@ -368,86 +362,11 @@ async function sendViaSmtp(params: EmailParams): Promise<{ success: boolean; err
     return { success: true }
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error'
-    console.error(`[SMTP ERROR] Type: ${params.emailType}, Error:`, errorMessage)
+    console.error(`[SMTP ERROR] Type: ${params.emailType}, To: ${Array.isArray(params.to) ? params.to.join(', ') : params.to}, Error:`, errorMessage)
 
     // Reset transporter on connection errors so it's recreated next time
     transporter = null
 
     return { success: false, error: errorMessage }
-  }
-}
-
-/**
- * Send email via Resend API (alternative)
- */
-async function sendViaResend(params: EmailParams): Promise<{ success: boolean; error?: string }> {
-  try {
-    if (!resend) {
-      return { success: false, error: 'Resend API key not configured' }
-    }
-
-    const { to, subject, html, emailType } = params
-    let recipients = Array.isArray(to) ? to : [to]
-
-    // Sandbox mode for Resend testing
-    const sandboxMode = RESEND_FROM.includes('onboarding@resend.dev')
-    const sandboxEmail = process.env.EMAIL_SANDBOX_TO
-
-    if (sandboxMode && sandboxEmail) {
-      const originalRecipients = recipients.join(', ')
-      recipients = [sandboxEmail]
-      console.log(`[EMAIL SANDBOX] Redirecting: ${originalRecipients} → ${sandboxEmail}`)
-    }
-
-    const { error } = await resend.emails.send({
-      from: RESEND_FROM,
-      to: recipients,
-      subject,
-      html,
-      tags: [
-        { name: 'type', value: emailType },
-        { name: 'app', value: 'geocuba-scei' },
-      ],
-    })
-
-    if (error) {
-      console.error(`[RESEND ERROR] Type: ${emailType}, To: ${recipients.join(', ')}, Error:`, error)
-      return { success: false, error: error.message }
-    }
-
-    console.log(`[RESEND SENT] Type: ${emailType}, To: ${recipients.join(', ')}, Subject: ${subject}`)
-    return { success: true }
-  } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : 'Unknown error'
-    console.error(`[RESEND EXCEPTION] Type: ${params.emailType}, Error:`, errorMessage)
-    return { success: false, error: errorMessage }
-  }
-}
-
-/**
- * Main send email function - routes to SMTP or Resend based on configuration
- * If SMTP fails, automatically falls back to Resend (if available)
- */
-export async function sendEmail(params: EmailParams): Promise<{ success: boolean; error?: string }> {
-  if (EMAIL_PROVIDER === 'smtp') {
-    const smtpResult = await sendViaSmtp(params)
-    if (smtpResult.success) {
-      return smtpResult
-    }
-
-    // SMTP failed - try Resend as fallback
-    if (resend) {
-      console.log(`[EMAIL FALLBACK] SMTP failed, trying Resend for ${params.emailType}...`)
-      const resendResult = await sendViaResend(params)
-      if (resendResult.success) {
-        return { success: true, error: undefined }
-      }
-      // Both failed - return SMTP error (primary)
-      return smtpResult
-    }
-
-    return smtpResult
-  } else {
-    return sendViaResend(params)
   }
 }

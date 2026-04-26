@@ -47,3 +47,35 @@ Stage Summary:
 - Process persists via start-stop-daemon with auto-restart
 - All APIs functional, CSS loading properly
 - Zero server restarts = stable deployment
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: Fix Director General & Coordinador emails, configure SMTP for production, fix mobile responsive design
+
+Work Log:
+- Updated .env with SMTP credentials: host=192.168.7.4, port=25, user=larquin@camaguey.geocuba.cu
+- Set correct email addresses: Director General = larquin@camaguey.geocuba.cu, Coordinador = ida@camaguey.geocuba.cu
+- Updated seed/route.ts with correct responsible names: Lázaro Arquin Pau (Director), Ida (Coordinador)
+- Simplified email.ts: removed Resend fallback, now SMTP-only for production
+- Email sends from: GEOCUBA CM-CA <larquin@camaguey.geocuba.cu>
+- Re-seeded database - all 13 departments updated with correct emails
+- Fixed mobile responsive design:
+  - Bottom nav: flex-1 layout, min-h-[52px], iOS safe area padding
+  - Added overflow-x-hidden to body, main container, root div
+  - SolicitudesTab: filters stack on mobile (w-full sm:w-[140px]), touch-friendly buttons (min-h-[44px])
+  - ReportesTab: affectation cards stack vertically on mobile (grid-cols-1 sm:grid-cols-3)
+  - DirectorioTab: cards stack below on mobile (flex-col sm:flex-row)
+  - MetricCard: reduced padding/font on mobile, truncate values
+  - Header: responsive icon/title sizing (text-xs sm:text-base)
+  - Added viewport-fit=cover meta tag for iOS notch support
+- Updated start.sh to use dev server mode for development
+- Linter passes with no errors
+- All APIs verified working
+
+Stage Summary:
+- SMTP production email configured (192.168.7.4:25)
+- Director General: larquin@camaguey.geocuba.cu (Lázaro Arquin Pau)
+- Coordinador General: ida@camaguey.geocuba.cu (Ida)
+- Mobile responsive design fully adjusted for phones
+- Production ready

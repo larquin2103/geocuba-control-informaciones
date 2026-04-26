@@ -68,17 +68,17 @@ export async function POST() {
       {
         name: 'Director General',
         type: 'DIRECCION_FUNCIONAL',
-        responsibleName: 'Director General',
+        responsibleName: 'Lázaro Arquin Pau',
         responsibleRole: 'Director General',
-        email: 'director@camaguey.geocuba.cu',
+        email: 'larquin@camaguey.geocuba.cu',
         phone: '',
       },
       {
         name: 'Coordinador General',
         type: 'DIRECCION_FUNCIONAL',
-        responsibleName: 'Coordinador General',
+        responsibleName: 'Ida',
         responsibleRole: 'Coordinador General',
-        email: 'coordinador@camaguey.geocuba.cu',
+        email: 'ida@camaguey.geocuba.cu',
         phone: '',
       },
       // UEB

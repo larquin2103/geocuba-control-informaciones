@@ -120,3 +120,10 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Mobile viewport fix for iOS safe areas */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}

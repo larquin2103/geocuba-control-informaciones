@@ -336,7 +336,7 @@ function PriorityBadge({ priority }: { priority: string }) {
 function DashboardSkeleton() {
   return (
     <div className="space-y-4 p-4">
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
         {Array.from({ length: 5 }).map((_, i) => (
           <Skeleton key={i} className="h-24 rounded-xl" />
         ))}
@@ -371,14 +371,14 @@ function MetricCard({ title, value, icon: Icon, color, bgColor, subtitle }: {
 }) {
   return (
     <Card className="py-3 gap-2">
-      <CardContent className="p-4 pt-0">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs text-muted-foreground font-medium">{title}</p>
-            <p className={`text-2xl font-bold ${color}`}>{value}</p>
-            {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
+      <CardContent className="p-3 sm:p-4 pt-0">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground font-medium truncate">{title}</p>
+            <p className={`text-xl sm:text-2xl font-bold ${color}`}>{value}</p>
+            {subtitle && <p className="text-xs text-muted-foreground mt-0.5 truncate">{subtitle}</p>}
           </div>
-          <div className={`${bgColor} p-2.5 rounded-xl`}>
+          <div className={`${bgColor} p-2 sm:p-2.5 rounded-xl flex-shrink-0`}>
             <Icon className={`size-5 ${color}`} />
           </div>
         </div>
@@ -453,7 +453,7 @@ function DashboardTab() {
       </div>
 
       {/* Metric Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3">
         <MetricCard
           title="Total Solicitudes"
           value={stats.total}
@@ -1090,7 +1090,7 @@ function SolicitudesTab() {
       {/* Filters */}
       <div className="flex gap-2 flex-wrap">
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[140px]">
+          <SelectTrigger className="w-full sm:w-[140px] min-h-[44px]">
             <Filter className="size-3.5 mr-1" />
             <SelectValue />
           </SelectTrigger>
@@ -1104,7 +1104,7 @@ function SolicitudesTab() {
         </Select>
 
         <Select value={deptFilter} onValueChange={setDeptFilter}>
-          <SelectTrigger className="w-[160px]">
+          <SelectTrigger className="w-full sm:w-[160px] min-h-[44px]">
             <Building2 className="size-3.5 mr-1" />
             <SelectValue />
           </SelectTrigger>
@@ -1187,17 +1187,17 @@ function SolicitudesTab() {
                     <CollapsibleSection show={isExpanded}>
                       <Separator className="my-3" />
                       <div className="space-y-2.5 text-sm">
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <div>
                             <p className="text-xs text-muted-foreground">Solicitante</p>
-                            <p className="font-medium text-xs">{req.requesterDept.name}</p>
+                            <p className="font-medium text-xs break-words">{req.requesterDept.name}</p>
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground">Proveedor</p>
-                            <p className="font-medium text-xs">{req.providerDept.name}</p>
+                            <p className="font-medium text-xs break-words">{req.providerDept.name}</p>
                           </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <div>
                             <p className="text-xs text-muted-foreground">Fecha Límite</p>
                             <p className="font-medium text-xs">{formatDate(req.deadlineDate)}</p>
@@ -1219,11 +1219,11 @@ function SolicitudesTab() {
                             <p className="text-xs">{req.completedNotes}</p>
                           </div>
                         )}
-                        <div className="flex gap-2 pt-1">
+                        <div className="flex flex-wrap gap-2 pt-1">
                           {req.status !== 'CUMPLIDO' && (
                             <Button
                               size="sm"
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8"
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs min-h-[44px]"
                               onClick={() => handleComplete(req.id)}
                               disabled={completeRequest.isPending}
                             >
@@ -1235,7 +1235,7 @@ function SolicitudesTab() {
                             <Button
                               variant="outline"
                               size="sm"
-                              className="text-xs h-8"
+                              className="text-xs min-h-[44px]"
                               onClick={() => sendReminder.mutate(req.id)}
                               disabled={sendReminder.isPending}
                             >
@@ -1272,24 +1272,24 @@ function ReportesTab() {
       <div className="flex gap-2 bg-muted p-1 rounded-lg">
         <button
           onClick={() => setReportSubTab('compliance')}
-          className={`flex-1 py-2 px-3 text-sm font-medium rounded-md transition-all ${
+          className={`flex-1 py-2 px-2 sm:px-3 text-xs sm:text-sm font-medium rounded-md transition-all min-h-[44px] ${
             reportSubTab === 'compliance'
               ? 'bg-background shadow-sm text-blue-700'
               : 'text-muted-foreground hover:text-foreground'
           }`}
         >
-          <Shield className="size-3.5 inline mr-1.5" />
+          <Shield className="size-3.5 inline mr-1" />
           Cumplimiento
         </button>
         <button
           onClick={() => setReportSubTab('affectation')}
-          className={`flex-1 py-2 px-3 text-sm font-medium rounded-md transition-all ${
+          className={`flex-1 py-2 px-2 sm:px-3 text-xs sm:text-sm font-medium rounded-md transition-all min-h-[44px] ${
             reportSubTab === 'affectation'
               ? 'bg-background shadow-sm text-blue-700'
               : 'text-muted-foreground hover:text-foreground'
           }`}
         >
-          <AlertTriangle className="size-3.5 inline mr-1.5" />
+          <AlertTriangle className="size-3.5 inline mr-1" />
           Afectación
         </button>
       </div>
@@ -1353,7 +1353,7 @@ function ComplianceReport() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
         <MetricCard title="Total" value={data.summary.total} icon={FileText} color="text-blue-700" bgColor="bg-blue-100" />
         <MetricCard title="Cumplidas" value={data.summary.completed} icon={CheckCircle2} color="text-emerald-700" bgColor="bg-emerald-100" />
         <MetricCard title="Incumplidas" value={data.summary.incumplidas} icon={XCircle} color="text-red-700" bgColor="bg-red-100" />
@@ -1393,7 +1393,7 @@ function ComplianceReport() {
                       value={dept.asProvider.rate}
                       className="h-2 mb-2"
                     />
-                    <div className="flex gap-3 text-xs text-muted-foreground">
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                       <span>Total: {dept.asProvider.total}</span>
                       <span className="text-emerald-600">✓ {dept.asProvider.completed}</span>
                       <span className="text-red-600">✗ {dept.asProvider.incumplidas}</span>
@@ -1509,7 +1509,7 @@ function AffectationReport() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
         <MetricCard title="Registros" value={data.summary.totalRecords} icon={FileText} color="text-red-700" bgColor="bg-red-100" />
         <MetricCard title="Depts. Afectados" value={data.summary.departmentsAffected} icon={Building2} color="text-amber-700" bgColor="bg-amber-100" />
         <MetricCard title="Requieren Revisión" value={data.summary.departmentsForReview} icon={AlertCircle} color="text-red-700" bgColor="bg-red-100" />
@@ -1597,10 +1597,10 @@ function AffectationDepartmentCard({ dept }: {
             {dept.records.map((rec) => (
               <div key={rec.id} className="p-2 rounded-md bg-red-50 text-xs space-y-1">
                 <p className="font-medium">{rec.requestDescription}</p>
-                <div className="flex justify-between text-muted-foreground">
+                <div className="flex flex-col sm:flex-row sm:justify-between text-muted-foreground gap-0.5">
                   <span>Solicitado por: {rec.requesterDeptName}</span>
                 </div>
-                <div className="flex justify-between text-muted-foreground">
+                <div className="flex flex-col sm:flex-row sm:justify-between text-muted-foreground gap-0.5">
                   <span>Vencimiento: {formatDateShort(rec.deadlineDate)}</span>
                   <span>Afectación: +{rec.affectationValue.toFixed(1)}</span>
                 </div>
@@ -1692,25 +1692,25 @@ function DeptCard({ dept }: { dept: Department }) {
   return (
     <Card className="py-3 gap-2">
       <CardContent className="p-4 pt-0">
-        <div className="flex items-start justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold">{dept.name}</p>
-            <div className="flex items-center gap-1.5 mt-1.5 text-xs text-muted-foreground">
-              <User className="size-3" />
-              <span>{dept.responsibleName}</span>
+            <p className="text-sm font-semibold break-words">{dept.name}</p>
+            <div className="flex flex-wrap items-center gap-1.5 mt-1.5 text-xs text-muted-foreground">
+              <User className="size-3 flex-shrink-0" />
+              <span className="break-words">{dept.responsibleName}</span>
               <span className="text-muted-foreground/50">·</span>
-              <span className="italic">{dept.responsibleRole}</span>
+              <span className="italic break-words">{dept.responsibleRole}</span>
             </div>
             {dept.phone && (
               <div className="flex items-center gap-1.5 mt-1 text-xs text-muted-foreground">
-                <PhoneCall className="size-3" />
+                <PhoneCall className="size-3 flex-shrink-0" />
                 <span>{dept.phone}</span>
               </div>
             )}
           </div>
           <a
             href={`mailto:${dept.email}`}
-            className="flex items-center gap-1.5 text-xs text-blue-700 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2.5 py-1.5 rounded-md transition-colors flex-shrink-0"
+            className="flex items-center gap-1.5 text-xs text-blue-700 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2.5 py-1.5 rounded-md transition-colors flex-shrink-0 min-h-[44px] justify-center sm:justify-start"
           >
             <Mail className="size-3.5" />
             <span className="hidden sm:inline">{dept.email}</span>
@@ -1779,19 +1779,19 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
+    <div className="min-h-screen flex flex-col bg-gray-50 overflow-x-hidden">
       {/* Header */}
       <header className="bg-blue-900 text-white shadow-lg">
         <div className="max-w-4xl mx-auto px-4 py-3">
-          <div className="flex items-center gap-3">
-            <div className="bg-white/10 p-2 rounded-lg">
-              <Building2 className="size-6" />
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="bg-white/10 p-1.5 sm:p-2 rounded-lg flex-shrink-0">
+              <Building2 className="size-5 sm:size-6" />
             </div>
-            <div className="min-w-0">
-              <h1 className="text-sm sm:text-base font-bold leading-tight truncate">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-xs sm:text-base font-bold leading-tight truncate">
                 GEOCUBA Camagüey - Ciego de Ávila
               </h1>
-              <p className="text-[11px] sm:text-xs text-blue-200 leading-tight truncate">
+              <p className="text-[10px] sm:text-xs text-blue-200 leading-tight truncate">
                 Sistema de Control de Entrega de Informaciones
               </p>
             </div>
@@ -1825,7 +1825,7 @@ export default function Home() {
       </header>
 
       {/* Main Content - CSS transition instead of AnimatePresence */}
-      <main className="flex-1 max-w-4xl mx-auto w-full pb-20 sm:pb-4">
+      <main className="flex-1 max-w-4xl mx-auto w-full overflow-x-hidden pb-24 sm:pb-4">
         <div
           key={activeTab}
           className="animate-in fade-in duration-150"
@@ -1845,20 +1845,20 @@ export default function Home() {
 
       {/* Mobile Bottom Navigation */}
       {isMobile && (
-        <nav className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-50 safe-area-bottom">
-          <div className="flex justify-around">
+        <nav className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-50" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+          <div className="flex">
             {navItems.map((item) => {
               const isActive = activeTab === item.id
               return (
                 <button
                   key={item.id}
                   onClick={() => handleTabChange(item.id)}
-                  className={`flex flex-col items-center justify-center py-2 px-1 min-w-[60px] transition-colors ${
+                  className={`flex flex-1 flex-col items-center justify-center py-2 px-1 min-h-[52px] transition-colors ${
                     isActive ? 'text-blue-700' : 'text-muted-foreground'
                   }`}
                 >
                   <item.icon className={`size-5 ${isActive ? 'text-blue-700' : ''}`} />
-                  <span className={`text-[10px] mt-0.5 font-medium ${isActive ? 'text-blue-700' : ''}`}>
+                  <span className={`text-[10px] mt-0.5 font-medium leading-tight truncate w-full text-center ${isActive ? 'text-blue-700' : ''}`}>
                     {item.label}
                   </span>
                   {isActive && <MobileTabIndicator />}
