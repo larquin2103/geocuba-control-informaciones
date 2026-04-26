@@ -13,7 +13,8 @@ import {
   Send, Bell, Search, Filter, Building2, Mail, User,
   CalendarIcon, ArrowRight, TrendingUp, Activity, Loader2,
   RefreshCw, ChevronDown, ChevronUp, AlertCircle, Users,
-  FileText, MapPin, PhoneCall, Shield, Eye, Info, Download
+  FileText, MapPin, PhoneCall, Shield, Eye, Info, Download,
+  Trash2
 } from 'lucide-react'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -156,6 +157,8 @@ interface AppState {
   setExpandedRequestId: (id: string | null) => void
   seeded: boolean
   setSeeded: (s: boolean) => void
+  currentDeptId: string
+  setCurrentDeptId: (id: string) => void
 }
 
 const useAppStore = create<AppState>((set) => ({
@@ -173,6 +176,8 @@ const useAppStore = create<AppState>((set) => ({
   setExpandedRequestId: (id) => set({ expandedRequestId: id }),
   seeded: false,
   setSeeded: (s) => set({ seeded: s }),
+  currentDeptId: '',
+  setCurrentDeptId: (id) => set({ currentDeptId: id }),
 }))
 
 // ============================================================================
@@ -1022,8 +1027,12 @@ function NuevaSolicitudTab() {
 function SolicitudesTab() {
   const { data: requests, isLoading } = useRequests()
   const { data: departments } = useDepartments()
-  const { statusFilter, setStatusFilter, deptFilter, setDeptFilter, searchQuery, setSearchQuery, expandedRequestId, setExpandedRequestId } = useAppStore()
+  const { statusFilter, setStatusFilter, deptFilter, setDeptFilter, searchQuery, setSearchQuery, expandedRequestId, setExpandedRequestId, currentDeptId } = useAppStore()
   const queryClient = useQueryClient()
+
+  // Check if current user is Director General
+  const directorGeneralDept = (departments || []).find(d => d.name === 'Director General')
+  const isDirectorGeneral = currentDeptId && directorGeneralDept ? currentDeptId === directorGeneralDept.id : false
 
   const completeRequest = useMutation({
     mutationFn: async ({ id, notes }: { id: string; notes?: string }) => {
@@ -1063,8 +1072,36 @@ function SolicitudesTab() {
     },
   })
 
+  const deleteRequest = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/requests/${id}`, {
+        method: 'DELETE',
+        headers: { 'x-auth-dept-id': currentDeptId },
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || 'Error al eliminar solicitud')
+      }
+      return res.json()
+    },
+    onSuccess: () => {
+      toast.success('Solicitud eliminada correctamente')
+      queryClient.invalidateQueries({ queryKey: ['requests'] })
+      queryClient.invalidateQueries({ queryKey: ['stats'] })
+    },
+    onError: (error) => {
+      toast.error(error.message)
+    },
+  })
+
   const handleComplete = (id: string) => {
     completeRequest.mutate({ id, notes: 'Completada desde el sistema' })
+  }
+
+  const handleDelete = (id: string) => {
+    if (window.confirm('¿Está seguro de que desea eliminar esta solicitud? Esta acción no se puede deshacer.')) {
+      deleteRequest.mutate(id)
+    }
   }
 
   if (isLoading) return <RequestsSkeleton />
@@ -1241,6 +1278,22 @@ function SolicitudesTab() {
                             >
                               <Bell className="size-3.5 mr-1" />
                               Recordar
+                            </Button>
+                          )}
+                          {isDirectorGeneral && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs min-h-[44px] text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                              onClick={() => handleDelete(req.id)}
+                              disabled={deleteRequest.isPending}
+                            >
+                              {deleteRequest.isPending ? (
+                                <Loader2 className="size-3.5 mr-1 animate-spin" />
+                              ) : (
+                                <Trash2 className="size-3.5 mr-1" />
+                              )}
+                              Eliminar
                             </Button>
                           )}
                         </div>
@@ -1739,9 +1792,10 @@ const navItems: { id: TabId; label: string; icon: React.ElementType }[] = [
 // ============================================================================
 
 export default function Home() {
-  const { activeTab, setActiveTab, seeded, setSeeded } = useAppStore()
+  const { activeTab, setActiveTab, seeded, setSeeded, currentDeptId, setCurrentDeptId } = useAppStore()
   const isMobile = useIsMobile()
   const queryClient = useQueryClient()
+  const { data: departments } = useDepartments()
 
   // Seed departments on first load
   useEffect(() => {
@@ -1778,6 +1832,13 @@ export default function Home() {
     directorio: <DirectorioTab />,
   }
 
+  // Compute current department for display
+  const directorGeneralDept = departments?.find(d => d.name === 'Director General')
+  const isDirectorGeneral = currentDeptId && directorGeneralDept ? currentDeptId === directorGeneralDept.id : false
+
+  const direccionesList = (departments || []).filter(d => d.type === 'DIRECCION_FUNCIONAL')
+  const uebsList = (departments || []).filter(d => d.type === 'UEB')
+
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 overflow-x-hidden">
       {/* Header */}
@@ -1795,6 +1856,53 @@ export default function Home() {
                 Sistema de Control de Entrega de Informaciones
               </p>
             </div>
+          </div>
+
+          {/* Session Selector */}
+          <div className="mt-2 flex items-center gap-2">
+            <User className="size-3.5 text-blue-300 flex-shrink-0" />
+            <Select value={currentDeptId} onValueChange={setCurrentDeptId}>
+              <SelectTrigger className="h-8 text-xs bg-white/10 border-white/20 text-white placeholder:text-blue-300 hover:bg-white/15 w-full sm:w-auto sm:min-w-[200px]">
+                <SelectValue placeholder="Seleccionar sesión..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectLabel>Dirección Superior</SelectLabel>
+                  {direccionesList.filter(d => d.name === 'Director General' || d.name === 'Coordinador General').map(d => (
+                    <SelectItem key={d.id} value={d.id}>
+                      <span className="flex items-center gap-1.5">
+                        <Shield className="size-3" />
+                        {d.name} — {d.responsibleName}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+                <SelectSeparator />
+                <SelectGroup>
+                  <SelectLabel>Direcciones Funcionales</SelectLabel>
+                  {direccionesList.filter(d => d.name !== 'Director General' && d.name !== 'Coordinador General').map(d => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name} — {d.responsibleName}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+                <SelectSeparator />
+                <SelectGroup>
+                  <SelectLabel>UEB</SelectLabel>
+                  {uebsList.map(d => (
+                    <SelectItem key={d.id} value={d.id}>
+                      {d.name} — {d.responsibleName}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            {isDirectorGeneral && (
+              <Badge className="bg-amber-500 text-white text-[10px] px-2 py-0.5 flex-shrink-0">
+                <Shield className="size-3 mr-1" />
+                Admin
+              </Badge>
+            )}
           </div>
         </div>
 

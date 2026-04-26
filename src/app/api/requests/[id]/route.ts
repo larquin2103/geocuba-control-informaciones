@@ -138,13 +138,33 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/requests/[id] - Delete a request
+// DELETE /api/requests/[id] - Delete a request (Director General only)
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params
+
+    // Check authorization: only Director General can delete requests
+    const authDeptId = request.headers.get('x-auth-dept-id')
+    if (!authDeptId) {
+      return NextResponse.json(
+        { error: 'Se requiere identificación de departamento para eliminar solicitudes' },
+        { status: 403 }
+      )
+    }
+
+    const directorDept = await db.department.findFirst({
+      where: { name: 'Director General' },
+    })
+
+    if (!directorDept || authDeptId !== directorDept.id) {
+      return NextResponse.json(
+        { error: 'Solo el Director General puede eliminar solicitudes' },
+        { status: 403 }
+      )
+    }
 
     const existingRequest = await db.informationRequest.findUnique({
       where: { id },

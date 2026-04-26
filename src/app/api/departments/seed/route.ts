@@ -68,7 +68,7 @@ export async function POST() {
       {
         name: 'Director General',
         type: 'DIRECCION_FUNCIONAL',
-        responsibleName: 'Lázaro Arquin Pau',
+        responsibleName: 'Ramón Larquin Pintado',
         responsibleRole: 'Director General',
         email: 'larquin@camaguey.geocuba.cu',
         phone: '',

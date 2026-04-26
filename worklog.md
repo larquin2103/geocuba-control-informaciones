@@ -79,3 +79,25 @@ Stage Summary:
 - Coordinador General: ida@camaguey.geocuba.cu (Ida)
 - Mobile responsive design fully adjusted for phones
 - Production ready
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Update Director General name and add delete functionality (Director General only)
+
+Work Log:
+- Updated Director General name from "Lázaro Arquin Pau" to "Ramón Larquin Pintado" in seed route
+- Added `currentDeptId` and `setCurrentDeptId` to Zustand store for session tracking
+- Added session/department selector in header (dropdown with all departments grouped by type)
+- Added "Admin" badge indicator when Director General session is selected
+- Added DELETE API authorization check: only Director General dept can delete (via x-auth-dept-id header)
+- Added delete mutation in SolicitudesTab with confirmation dialog
+- Added "Eliminar" button (red outlined) visible only when Director General is the active session
+- Re-seeded database to update the Director General name
+- Lint passes cleanly
+
+Stage Summary:
+- Director General name updated to "Ramón Larquin Pintado"
+- Delete functionality implemented with both frontend (UI) and backend (API) restrictions
+- Session selector allows identifying as any department; only "Director General" gets admin privileges (delete button + Admin badge)
+- API endpoint validates x-auth-dept-id header against Director General department
