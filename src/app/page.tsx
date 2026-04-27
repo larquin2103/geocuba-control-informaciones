@@ -1891,10 +1891,13 @@ export default function Home() {
                 </div>
               </div>
               {isDirectorGeneral && (
-                <Badge className="bg-amber-500 text-white text-[10px] px-2 py-0.5 flex-shrink-0">
-                  <Shield className="size-3 mr-1" />
-                  Admin
-                </Badge>
+                <a
+                  href="/admin"
+                  className="flex items-center gap-1 bg-amber-500 hover:bg-amber-600 text-white text-[10px] px-2 py-1 rounded-md font-medium transition-colors flex-shrink-0"
+                >
+                  <Shield className="size-3" />
+                  Panel Admin
+                </a>
               )}
               <Button
                 variant="ghost"

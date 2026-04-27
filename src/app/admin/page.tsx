@@ -6,7 +6,9 @@ import { toast } from 'sonner'
 import {
   Building2, Lock, Mail, KeyRound, Loader2, Eye, EyeOff,
   BarChart3, Users, FileText, AlertTriangle, Mail as MailIcon,
-  RefreshCw, Search, ArrowRight, Copy, LogOut
+  RefreshCw, Search, Copy, LogOut, Settings, CheckCircle2,
+  XCircle, ArrowRight, Server, Wifi, WifiOff, ChevronLeft,
+  ChevronRight, Filter
 } from 'lucide-react'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -18,7 +20,7 @@ import { Badge } from '@/components/ui/badge'
 // TYPES
 // ============================================================================
 
-type TabId = 'dashboard' | 'departments' | 'requests' | 'emails' | 'affectations'
+type TabId = 'dashboard' | 'departments' | 'requests' | 'emails' | 'affectations' | 'smtp'
 
 interface DashboardData {
   metrics: {
@@ -34,6 +36,35 @@ interface DashboardData {
 interface DeptData {
   id: string; name: string; type: string; responsibleName: string; email: string
   phone: string | null; active: boolean; hasPassword: boolean; lastLoginAt: string | null
+}
+
+interface EmailLogData {
+  id: string
+  recipientEmail: string
+  subject: string
+  emailType: string
+  sentAt: string
+  success: boolean
+  error: string | null
+  request: {
+    description: string
+    status: string
+    providerDept: { name: string }
+    requesterDept: { name: string }
+  } | null
+}
+
+interface SmtpTestResult {
+  connected: boolean
+  authenticated: boolean
+  error?: string
+  details?: {
+    host: string
+    port: number
+    secure: boolean
+    hasAuth: boolean
+    authUser: string
+  }
 }
 
 // ============================================================================
@@ -108,8 +139,13 @@ export default function AdminPage() {
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-900 to-blue-800 text-white px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
+          <a href="/" className="flex items-center gap-2 text-blue-200 hover:text-white transition-colors">
+            <ChevronLeft className="size-4" />
+            <span className="text-xs hidden sm:inline">Volver</span>
+          </a>
+          <div className="w-px h-5 bg-blue-600" />
           <Building2 className="size-5" />
-          <h1 className="font-bold text-sm sm:text-base">GEOCUBA Camagüey - Panel de Administración</h1>
+          <h1 className="font-bold text-sm sm:text-base">GEOCUBA CM-CA - Panel de Administración</h1>
         </div>
         <Button variant="ghost" size="sm" className="text-blue-200 hover:text-white hover:bg-blue-800" onClick={() => { sessionStorage.removeItem('geocuba_admin_auth'); setIsAuthed(false) }}>
           <LogOut className="size-4 mr-1" /> Salir
@@ -124,6 +160,7 @@ export default function AdminPage() {
           { id: 'requests' as TabId, icon: FileText, label: 'Solicitudes' },
           { id: 'emails' as TabId, icon: MailIcon, label: 'Correos' },
           { id: 'affectations' as TabId, icon: AlertTriangle, label: 'Afectaciones' },
+          { id: 'smtp' as TabId, icon: Settings, label: 'SMTP' },
         ]).map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)}
             className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
@@ -173,6 +210,7 @@ export default function AdminPage() {
         {activeTab === 'requests' && <RequestsTab />}
         {activeTab === 'emails' && <EmailsTab />}
         {activeTab === 'affectations' && <AffectationsTab />}
+        {activeTab === 'smtp' && <SmtpTab />}
       </div>
     </div>
   )
@@ -259,7 +297,7 @@ function DashboardTab() {
           <CardHeader className="pb-2"><CardTitle className="text-sm">🕐 Últimos Accesos</CardTitle></CardHeader>
           <CardContent className="pt-0">
             {data.recentLogins.length > 0 ? (
-              <div className="space-y-2">
+              <div className="space-y-2 max-h-64 overflow-y-auto">
                 {data.recentLogins.map(l => (
                   <div key={l.id} className="flex items-center justify-between text-sm p-2 bg-muted/30 rounded">
                     <div><p className="font-medium">{l.name}</p><p className="text-xs text-muted-foreground">{l.email}</p></div>
@@ -275,7 +313,7 @@ function DashboardTab() {
           <CardHeader className="pb-2"><CardTitle className="text-sm">⏰ Próximos Vencimientos</CardTitle></CardHeader>
           <CardContent className="pt-0">
             {data.upcoming.length > 0 ? (
-              <div className="space-y-2">
+              <div className="space-y-2 max-h-64 overflow-y-auto">
                 {data.upcoming.map(r => (
                   <div key={r.id} className="flex items-center justify-between text-sm p-2 bg-muted/30 rounded">
                     <div><p className="font-medium truncate max-w-[200px]">{r.description}</p><p className="text-xs text-muted-foreground">{r.providerDept.name} → {r.requesterDept.name}</p></div>
@@ -441,45 +479,118 @@ function RequestsTab() {
 }
 
 // ============================================================================
-// EMAILS TAB
+// EMAILS TAB - with real email logs
 // ============================================================================
 
 function EmailsTab() {
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin-emails'],
+  const [page, setPage] = useState(1)
+  const [typeFilter, setTypeFilter] = useState('')
+  const [successFilter, setSuccessFilter] = useState('')
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['admin-email-logs', page, typeFilter, successFilter],
     queryFn: async () => {
-      const res = await fetch('/api/stats')
-      if (!res.ok) throw new Error('Error')
-      const stats = await res.json()
-      return stats.recentActivity || []
+      const params = new URLSearchParams()
+      params.set('page', page.toString())
+      params.set('limit', '50')
+      if (typeFilter) params.set('type', typeFilter)
+      if (successFilter) params.set('success', successFilter)
+      const res = await fetch(`/api/admin/email-logs?${params}`)
+      if (!res.ok) throw new Error('Error cargando correos')
+      return res.json() as Promise<{ logs: EmailLogData[]; total: number; page: number; totalPages: number }>
     },
   })
 
+  const emailTypeBadge = (type: string) => {
+    const cfg: Record<string, string> = {
+      RECORDATORIO: 'bg-amber-50 text-amber-700',
+      NOTIFICACION: 'bg-blue-50 text-blue-700',
+      CONFIRMACION: 'bg-emerald-50 text-emerald-700',
+      EN_FECHA: 'bg-orange-50 text-orange-700',
+      INCUMPLIDO: 'bg-red-50 text-red-700',
+      CREDENCIALES: 'bg-purple-50 text-purple-700',
+    }
+    return <Badge variant="outline" className={cfg[type] || 'bg-slate-50 text-slate-600'}>{type}</Badge>
+  }
+
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-bold">📧 Actividad Reciente</h2>
-      <p className="text-sm text-muted-foreground">Los registros de correos se muestran en la actividad del sistema.</p>
-      {isLoading ? <Loader2 className="size-6 animate-spin mx-auto" /> : (
-        <div className="bg-white rounded-xl border overflow-hidden overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead><tr className="bg-slate-50">
-              <th className="text-left p-3 font-semibold text-xs text-muted-foreground">Actividad</th>
-              <th className="text-left p-3 font-semibold text-xs text-muted-foreground">Estado</th>
-              <th className="text-left p-3 font-semibold text-xs text-muted-foreground">Proveedor</th>
-              <th className="text-left p-3 font-semibold text-xs text-muted-foreground">Fecha</th>
-            </tr></thead>
-            <tbody>
-              {(data || []).map((a: any, i: number) => (
-                <tr key={i} className="border-t hover:bg-slate-50">
-                  <td className="p-3 truncate max-w-[250px]">{a.request?.description}</td>
-                  <td className="p-3"><Badge variant="outline">{a.toStatus}</Badge></td>
-                  <td className="p-3">{a.request?.providerDept?.name}</td>
-                  <td className="p-3 text-xs">{new Date(a.changedAt).toLocaleString('es-CU')}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="flex justify-between items-center flex-wrap gap-2">
+        <h2 className="text-xl font-bold">📧 Registro de Correos</h2>
+        <div className="flex gap-2 items-center">
+          <select value={typeFilter} onChange={e => { setTypeFilter(e.target.value); setPage(1) }}
+            className="border rounded-md px-2 py-1.5 text-sm">
+            <option value="">Todos los tipos</option>
+            <option value="RECORDATORIO">Recordatorio</option>
+            <option value="NOTIFICACION">Notificación</option>
+            <option value="CONFIRMACION">Confirmación</option>
+            <option value="EN_FECHA">En Fecha</option>
+            <option value="INCUMPLIDO">Incumplido</option>
+            <option value="CREDENCIALES">Credenciales</option>
+          </select>
+          <select value={successFilter} onChange={e => { setSuccessFilter(e.target.value); setPage(1) }}
+            className="border rounded-md px-2 py-1.5 text-sm">
+            <option value="">Todos</option>
+            <option value="true">Exitosos</option>
+            <option value="false">Fallidos</option>
+          </select>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            <RefreshCw className="size-4 mr-1" /> Actualizar
+          </Button>
         </div>
+      </div>
+
+      {isLoading ? <Loader2 className="size-6 animate-spin mx-auto" /> : (
+        <>
+          <div className="bg-white rounded-xl border overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead><tr className="bg-slate-50">
+                  <th className="text-left p-3 font-semibold text-xs text-muted-foreground">Fecha</th>
+                  <th className="text-left p-3 font-semibold text-xs text-muted-foreground">Tipo</th>
+                  <th className="text-left p-3 font-semibold text-xs text-muted-foreground">Destinatario</th>
+                  <th className="text-left p-3 font-semibold text-xs text-muted-foreground">Asunto</th>
+                  <th className="text-left p-3 font-semibold text-xs text-muted-foreground">Estado</th>
+                  <th className="text-left p-3 font-semibold text-xs text-muted-foreground">Error</th>
+                </tr></thead>
+                <tbody>
+                  {(data?.logs || []).map((log: EmailLogData) => (
+                    <tr key={log.id} className={`border-t hover:bg-slate-50 ${!log.success ? 'bg-red-50/50' : ''}`}>
+                      <td className="p-3 text-xs text-muted-foreground whitespace-nowrap">{new Date(log.sentAt).toLocaleString('es-CU')}</td>
+                      <td className="p-3">{emailTypeBadge(log.emailType)}</td>
+                      <td className="p-3 text-xs">{log.recipientEmail}</td>
+                      <td className="p-3 max-w-[200px] truncate text-xs">{log.subject}</td>
+                      <td className="p-3">
+                        {log.success
+                          ? <Badge variant="outline" className="bg-emerald-50 text-emerald-700"><CheckCircle2 className="size-3 mr-1" />OK</Badge>
+                          : <Badge variant="outline" className="bg-red-50 text-red-700"><XCircle className="size-3 mr-1" />Falló</Badge>
+                        }
+                      </td>
+                      <td className="p-3 text-xs text-red-600 max-w-[200px] truncate">{log.error || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Pagination */}
+          {data && data.totalPages > 1 && (
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                {data.total} correos en total - Página {data.page} de {data.totalPages}
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
+                  <ChevronLeft className="size-4" />
+                </Button>
+                <Button variant="outline" size="sm" disabled={page >= data.totalPages} onClick={() => setPage(p => p + 1)}>
+                  <ChevronRight className="size-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   )
@@ -531,6 +642,238 @@ function AffectationsTab() {
           </Card>
         ))
       ) : <p className="text-sm text-muted-foreground text-center py-8">No hay afectaciones registradas</p>}
+    </div>
+  )
+}
+
+// ============================================================================
+// SMTP DIAGNOSTICS TAB
+// ============================================================================
+
+function SmtpTab() {
+  const [testResult, setTestResult] = useState<SmtpTestResult | null>(null)
+  const [isTesting, setIsTesting] = useState(false)
+  const [testEmail, setTestEmail] = useState('larquin@camaguey.geocuba.cu')
+  const [sendingTest, setSendingTest] = useState(false)
+  const [testEmailResult, setTestEmailResult] = useState<{ success: boolean; message: string } | null>(null)
+
+  const runTest = async () => {
+    setIsTesting(true)
+    setTestResult(null)
+    try {
+      const res = await fetch('/api/admin/test-smtp')
+      const data = await res.json() as SmtpTestResult
+      setTestResult(data)
+      if (data.connected) {
+        toast.success('Conexión SMTP exitosa')
+      } else {
+        toast.error(`Conexión SMTP fallida: ${data.error}`)
+      }
+    } catch (err) {
+      setTestResult({
+        connected: false,
+        authenticated: false,
+        error: err instanceof Error ? err.message : 'Error desconocido',
+      })
+      toast.error('Error al probar conexión SMTP')
+    } finally {
+      setIsTesting(false)
+    }
+  }
+
+  const sendTestEmail = async () => {
+    if (!testEmail.trim()) {
+      toast.error('Ingrese un correo de destino')
+      return
+    }
+    setSendingTest(true)
+    setTestEmailResult(null)
+    try {
+      const res = await fetch('/api/email/remind', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestId: 'test',
+          message: 'Este es un correo de prueba del sistema GEOCUBA SCEI',
+        }),
+      })
+      const data = await res.json()
+      if (res.ok && !data.error) {
+        setTestEmailResult({ success: true, message: `Correo enviado exitosamente a ${testEmail}` })
+        toast.success('Correo de prueba enviado')
+      } else {
+        setTestEmailResult({ success: false, message: data.error || data.message || 'Error al enviar' })
+        toast.error('Error al enviar correo de prueba')
+      }
+    } catch (err) {
+      setTestEmailResult({ success: false, message: err instanceof Error ? err.message : 'Error desconocido' })
+      toast.error('Error al enviar correo de prueba')
+    } finally {
+      setSendingTest(false)
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-xl font-bold">⚙️ Configuración SMTP</h2>
+
+      {/* Connection Test */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Server className="size-4 text-blue-600" />
+            Prueba de Conexión SMTP
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0 space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Verifique la conexión con el servidor de correo GEOCUBA (Exchange).
+          </p>
+          <Button onClick={runTest} disabled={isTesting} className="bg-blue-700 hover:bg-blue-800">
+            {isTesting ? <Loader2 className="size-4 mr-1 animate-spin" /> : <Wifi className="size-4 mr-1" />}
+            {isTesting ? 'Probando...' : 'Probar Conexión'}
+          </Button>
+
+          {testResult && (
+            <div className={`p-4 rounded-lg border ${testResult.connected ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+              <div className="flex items-center gap-2 mb-3">
+                {testResult.connected ? (
+                  <Wifi className="size-5 text-emerald-600" />
+                ) : (
+                  <WifiOff className="size-5 text-red-600" />
+                )}
+                <span className={`font-semibold ${testResult.connected ? 'text-emerald-700' : 'text-red-700'}`}>
+                  {testResult.connected ? 'Conexión Exitosa' : 'Conexión Fallida'}
+                </span>
+              </div>
+
+              {testResult.details && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Servidor</p>
+                    <p className="font-medium">{testResult.details.host}:{testResult.details.port}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">SSL/TLS</p>
+                    <p className="font-medium">{testResult.details.secure ? 'Sí' : 'No'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Autenticación</p>
+                    <p className="font-medium">{testResult.details.hasAuth ? `Sí (${testResult.details.authUser})` : 'No'}</p>
+                  </div>
+                </div>
+              )}
+
+              {testResult.error && (
+                <div className="mt-3 p-3 bg-red-100 rounded text-sm">
+                  <p className="font-medium text-red-700">Error:</p>
+                  <p className="text-red-600 text-xs mt-1 break-all">{testResult.error}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Configuration Info */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Settings className="size-4 text-slate-600" />
+            Configuración Actual
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+            <div className="p-3 bg-slate-50 rounded-lg">
+              <p className="text-xs text-muted-foreground">Servidor SMTP</p>
+              <p className="font-medium">192.168.7.4:25</p>
+              <p className="text-xs text-muted-foreground mt-1">Exchange Server GEOCUBA</p>
+            </div>
+            <div className="p-3 bg-slate-50 rounded-lg">
+              <p className="text-xs text-muted-foreground">Cuenta de Envío</p>
+              <p className="font-medium">larquin@camaguey.geocuba.cu</p>
+              <p className="text-xs text-muted-foreground mt-1">Autenticación con contraseña</p>
+            </div>
+            <div className="p-3 bg-slate-50 rounded-lg">
+              <p className="text-xs text-muted-foreground">SSL/TLS</p>
+              <p className="font-medium">Desactivado (Puerto 25)</p>
+              <p className="text-xs text-muted-foreground mt-1">STARTTLS automático</p>
+            </div>
+            <div className="p-3 bg-slate-50 rounded-lg">
+              <p className="text-xs text-muted-foreground">Certificados</p>
+              <p className="font-medium">Auto-firmados permitidos</p>
+              <p className="text-xs text-muted-foreground mt-1">rejectUnauthorized: false</p>
+            </div>
+          </div>
+
+          <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <p className="text-xs font-medium text-amber-700">📌 Nota importante:</p>
+            <p className="text-xs text-amber-600 mt-1">
+              Si la conexión falla, verifique que: (1) El servidor SMTP 192.168.7.4 esté accesible desde esta red,
+              (2) El puerto 25 no esté bloqueado por firewall, (3) Las credenciales sean correctas,
+              (4) El servidor Exchange permita relay para esta cuenta.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Recent Email Errors */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <AlertTriangle className="size-4 text-amber-600" />
+            Últimos Errores de Envío
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <RecentEmailErrors />
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+function RecentEmailErrors() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['admin-email-errors'],
+    queryFn: async () => {
+      const res = await fetch('/api/admin/email-logs?success=false&limit=10')
+      if (!res.ok) throw new Error('Error')
+      return res.json() as Promise<{ logs: EmailLogData[]; total: number }>
+    },
+  })
+
+  if (isLoading) return <Loader2 className="size-5 animate-spin" />
+
+  const logs = data?.logs || []
+
+  if (logs.length === 0) {
+    return (
+      <div className="text-center py-4">
+        <CheckCircle2 className="size-8 text-emerald-500 mx-auto mb-2" />
+        <p className="text-sm text-muted-foreground">No hay errores de envío registrados</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2 max-h-64 overflow-y-auto">
+      {logs.map(log => (
+        <div key={log.id} className="p-2.5 bg-red-50 rounded-lg border border-red-100">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-medium text-red-700">{log.recipientEmail}</span>
+            <span className="text-[10px] text-muted-foreground">{new Date(log.sentAt).toLocaleString('es-CU')}</span>
+          </div>
+          <p className="text-xs text-red-600 break-all">{log.error || 'Sin detalles del error'}</p>
+          <p className="text-[10px] text-muted-foreground mt-1 truncate">{log.subject}</p>
+        </div>
+      ))}
+      {data && data.total > 10 && (
+        <p className="text-xs text-muted-foreground text-center">
+          Mostrando 10 de {data.total} errores. Vea la pestaña "Correos" para más detalles.
+        </p>
+      )}
     </div>
   )
 }

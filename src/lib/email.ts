@@ -18,10 +18,10 @@ const SMTP_CONFIG = {
   tls: {
     rejectUnauthorized: false,
   },
-  // Connection timeout settings
-  connectionTimeout: 10000,
-  greetingTimeout: 10000,
-  socketTimeout: 15000,
+  // Connection timeout settings - increased for slow corporate networks
+  connectionTimeout: 30000,
+  greetingTimeout: 15000,
+  socketTimeout: 30000,
 }
 
 const SMTP_FROM = process.env.SMTP_FROM || `GEOCUBA CM-CA <${SMTP_CONFIG.auth.user}>`
@@ -31,18 +31,31 @@ let transporter: nodemailer.Transporter | null = null
 
 function getTransporter(): nodemailer.Transporter {
   if (!transporter) {
+    const authConfig = SMTP_CONFIG.auth.user ? SMTP_CONFIG.auth : undefined
     transporter = nodemailer.createTransport({
       host: SMTP_CONFIG.host,
       port: SMTP_CONFIG.port,
       secure: SMTP_CONFIG.secure,
-      auth: SMTP_CONFIG.auth.user ? SMTP_CONFIG.auth : undefined,
+      auth: authConfig,
       tls: SMTP_CONFIG.tls,
       connectionTimeout: SMTP_CONFIG.connectionTimeout,
       greetingTimeout: SMTP_CONFIG.greetingTimeout,
       socketTimeout: SMTP_CONFIG.socketTimeout,
+      // Pool connections for better performance
+      pool: true,
+      maxConnections: 5,
+      maxMessages: 100,
     })
   }
   return transporter
+}
+
+// Reset transporter (use after connection errors)
+function resetTransporter() {
+  if (transporter) {
+    try { transporter.close() } catch {}
+    transporter = null
+  }
 }
 
 // ============================================================================
@@ -65,6 +78,61 @@ interface RequestEmailData {
   requestId?: string
   currentStatus?: string
   customMessage?: string
+}
+
+// ============================================================================
+// SMTP TEST / DIAGNOSTIC
+// ============================================================================
+
+export interface SmtpTestResult {
+  connected: boolean
+  authenticated: boolean
+  error?: string
+  details?: {
+    host: string
+    port: number
+    secure: boolean
+    hasAuth: boolean
+    authUser: string
+  }
+}
+
+/**
+ * Test SMTP connection - useful for diagnostics
+ */
+export async function testSmtpConnection(): Promise<SmtpTestResult> {
+  const details = {
+    host: SMTP_CONFIG.host,
+    port: SMTP_CONFIG.port,
+    secure: SMTP_CONFIG.secure,
+    hasAuth: !!SMTP_CONFIG.auth.user,
+    authUser: SMTP_CONFIG.auth.user || '(none)',
+  }
+
+  try {
+    // Reset and create fresh transporter for test
+    resetTransporter()
+    const transport = getTransporter()
+
+    // Verify the connection
+    await transport.verify()
+
+    console.log('[SMTP TEST] Connection verified successfully')
+    return { connected: true, authenticated: true, details }
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+    console.error('[SMTP TEST] Connection failed:', errorMessage)
+
+    // Reset after failed test
+    resetTransporter()
+
+    return {
+      connected: false,
+      authenticated: false,
+      error: errorMessage,
+      details,
+    }
+  }
 }
 
 // ============================================================================
@@ -409,41 +477,56 @@ export function credentialsTemplate(data: {
 }
 
 // ============================================================================
-// SEND EMAIL FUNCTION - SMTP ONLY (Production)
+// SEND EMAIL FUNCTION - SMTP WITH RETRY
 // ============================================================================
 
+const MAX_RETRIES = 2
+
 /**
- * Send email via SMTP (GEOCUBA Exchange Server)
+ * Send email via SMTP (GEOCUBA Exchange Server) with retry logic
  * Production-ready - sends directly to any internal GEOCUBA address
  */
 export async function sendEmail(params: EmailParams): Promise<{ success: boolean; error?: string }> {
-  try {
-    const { to, subject, html, emailType } = params
-    const recipients = Array.isArray(to) ? to : [to]
+  const { to, subject, html, emailType } = params
+  const recipients = Array.isArray(to) ? to : [to]
 
-    const transport = getTransporter()
+  let lastError: string = ''
 
-    const result = await transport.sendMail({
-      from: SMTP_FROM,
-      to: recipients.join(', '),
-      subject,
-      html,
-      headers: {
-        'X-Mailer': 'GEOCUBA-SCEI',
-        'X-Priority': emailType === 'RECORDATORIO' ? '1' : emailType === 'INCUMPLIDO' ? '1' : '3',
-        'X-Email-Type': emailType,
-      },
-    })
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      if (attempt > 0) {
+        console.log(`[SMTP RETRY] Attempt ${attempt + 1}/${MAX_RETRIES + 1} for ${emailType} to ${recipients.join(', ')}`)
+        // Reset transporter before retry
+        resetTransporter()
+        // Wait a bit before retrying
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt))
+      }
 
-    console.log(`[SMTP SENT] Type: ${emailType}, To: ${recipients.join(', ')}, Subject: ${subject}, MessageId: ${result.messageId}`)
-    return { success: true }
-  } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : 'Unknown error'
-    console.error(`[SMTP ERROR] Type: ${params.emailType}, To: ${Array.isArray(params.to) ? params.to.join(', ') : params.to}, Error:`, errorMessage)
+      const transport = getTransporter()
 
-    // Reset transporter on connection errors so it's recreated next time
-    transporter = null
+      const result = await transport.sendMail({
+        from: SMTP_FROM,
+        to: recipients.join(', '),
+        subject,
+        html,
+        headers: {
+          'X-Mailer': 'GEOCUBA-SCEI',
+          'X-Priority': emailType === 'RECORDATORIO' ? '1' : emailType === 'INCUMPLIDO' ? '1' : '3',
+          'X-Email-Type': emailType,
+        },
+      })
 
-    return { success: false, error: errorMessage }
+      console.log(`[SMTP SENT] Type: ${emailType}, To: ${recipients.join(', ')}, Subject: ${subject}, MessageId: ${result.messageId}`)
+      return { success: true }
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : 'Unknown error'
+      console.error(`[SMTP ERROR] Attempt ${attempt + 1}/${MAX_RETRIES + 1}, Type: ${params.emailType}, To: ${recipients.join(', ')}, Error:`, lastError)
+
+      // Reset transporter on connection errors so it's recreated next time
+      resetTransporter()
+    }
   }
+
+  console.error(`[SMTP FAILED] All ${MAX_RETRIES + 1} attempts failed for ${emailType} to ${recipients.join(', ')}`)
+  return { success: false, error: lastError }
 }
