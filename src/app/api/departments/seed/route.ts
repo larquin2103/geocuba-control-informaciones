@@ -81,15 +81,15 @@ export async function POST() {
         responsibleName: 'Ramón Larquin Pintado',
         responsibleRole: 'Director General',
         email: 'larquin@camaguey.geocuba.cu',
-        phone: '',
+        phone: '52177113',
       },
       {
         name: 'Coordinador General',
         type: 'DIRECCION_FUNCIONAL',
-        responsibleName: 'Ida',
+        responsibleName: 'Idalmis Zayas',
         responsibleRole: 'Coordinador General',
         email: 'ida@camaguey.geocuba.cu',
-        phone: '',
+        phone: '52809086',
       },
       // UEB
       {
