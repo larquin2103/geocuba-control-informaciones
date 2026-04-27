@@ -14,7 +14,7 @@ import {
   CalendarIcon, ArrowRight, TrendingUp, Activity, Loader2,
   RefreshCw, ChevronDown, ChevronUp, AlertCircle, Users,
   FileText, MapPin, PhoneCall, Shield, Eye, Info, Download,
-  Trash2
+  Trash2, LogOut
 } from 'lucide-react'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -157,8 +157,6 @@ interface AppState {
   setExpandedRequestId: (id: string | null) => void
   seeded: boolean
   setSeeded: (s: boolean) => void
-  currentDeptId: string
-  setCurrentDeptId: (id: string) => void
 }
 
 const useAppStore = create<AppState>((set) => ({
@@ -176,8 +174,6 @@ const useAppStore = create<AppState>((set) => ({
   setExpandedRequestId: (id) => set({ expandedRequestId: id }),
   seeded: false,
   setSeeded: (s) => set({ seeded: s }),
-  currentDeptId: '',
-  setCurrentDeptId: (id) => set({ currentDeptId: id }),
 }))
 
 // ============================================================================
@@ -305,6 +301,29 @@ function useAffectationReport() {
       if (!res.ok) throw new Error('Error cargando reporte de afectación')
       return res.json() as Promise<AffectationData>
     },
+  })
+}
+
+interface SessionUser {
+  departmentId: string
+  email: string
+  departmentName: string
+  responsibleName: string
+  departmentType: string
+  isDirectorGeneral: boolean
+}
+
+function useSession() {
+  return useQuery({
+    queryKey: ['session'],
+    queryFn: async () => {
+      const res = await fetch('/api/auth/session')
+      if (!res.ok) return null
+      const data = await res.json()
+      return data.authenticated ? data.user as SessionUser : null
+    },
+    retry: false,
+    staleTime: 5 * 60 * 1000, // 5 minutes
   })
 }
 
@@ -1027,12 +1046,12 @@ function NuevaSolicitudTab() {
 function SolicitudesTab() {
   const { data: requests, isLoading } = useRequests()
   const { data: departments } = useDepartments()
-  const { statusFilter, setStatusFilter, deptFilter, setDeptFilter, searchQuery, setSearchQuery, expandedRequestId, setExpandedRequestId, currentDeptId } = useAppStore()
+  const { data: session } = useSession()
+  const { statusFilter, setStatusFilter, deptFilter, setDeptFilter, searchQuery, setSearchQuery, expandedRequestId, setExpandedRequestId } = useAppStore()
   const queryClient = useQueryClient()
 
-  // Check if current user is Director General
-  const directorGeneralDept = (departments || []).find(d => d.name === 'Director General')
-  const isDirectorGeneral = currentDeptId && directorGeneralDept ? currentDeptId === directorGeneralDept.id : false
+  // Check if current user is Director General from session
+  const isDirectorGeneral = session?.isDirectorGeneral ?? false
 
   const completeRequest = useMutation({
     mutationFn: async ({ id, notes }: { id: string; notes?: string }) => {
@@ -1076,7 +1095,6 @@ function SolicitudesTab() {
     mutationFn: async (id: string) => {
       const res = await fetch(`/api/requests/${id}`, {
         method: 'DELETE',
-        headers: { 'x-auth-dept-id': currentDeptId },
       })
       if (!res.ok) {
         const err = await res.json()
@@ -1792,10 +1810,11 @@ const navItems: { id: TabId; label: string; icon: React.ElementType }[] = [
 // ============================================================================
 
 export default function Home() {
-  const { activeTab, setActiveTab, seeded, setSeeded, currentDeptId, setCurrentDeptId } = useAppStore()
+  const { activeTab, setActiveTab, seeded, setSeeded } = useAppStore()
   const isMobile = useIsMobile()
   const queryClient = useQueryClient()
   const { data: departments } = useDepartments()
+  const { data: session } = useSession()
 
   // Seed departments on first load
   useEffect(() => {
@@ -1832,12 +1851,13 @@ export default function Home() {
     directorio: <DirectorioTab />,
   }
 
-  // Compute current department for display
-  const directorGeneralDept = departments?.find(d => d.name === 'Director General')
-  const isDirectorGeneral = currentDeptId && directorGeneralDept ? currentDeptId === directorGeneralDept.id : false
+  // Session info
+  const isDirectorGeneral = session?.isDirectorGeneral ?? false
 
-  const direccionesList = (departments || []).filter(d => d.type === 'DIRECCION_FUNCIONAL')
-  const uebsList = (departments || []).filter(d => d.type === 'UEB')
+  const handleLogout = async () => {
+    await fetch('/api/auth/session', { method: 'POST' })
+    window.location.href = '/login'
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 overflow-x-hidden">
@@ -1858,52 +1878,35 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Session Selector */}
-          <div className="mt-2 flex items-center gap-2">
-            <User className="size-3.5 text-blue-300 flex-shrink-0" />
-            <Select value={currentDeptId} onValueChange={setCurrentDeptId}>
-              <SelectTrigger className="h-8 text-xs bg-white/10 border-white/20 text-white placeholder:text-blue-300 hover:bg-white/15 w-full sm:w-auto sm:min-w-[200px]">
-                <SelectValue placeholder="Seleccionar sesión..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectLabel>Dirección Superior</SelectLabel>
-                  {direccionesList.filter(d => d.name === 'Director General' || d.name === 'Coordinador General').map(d => (
-                    <SelectItem key={d.id} value={d.id}>
-                      <span className="flex items-center gap-1.5">
-                        <Shield className="size-3" />
-                        {d.name} — {d.responsibleName}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-                <SelectSeparator />
-                <SelectGroup>
-                  <SelectLabel>Direcciones Funcionales</SelectLabel>
-                  {direccionesList.filter(d => d.name !== 'Director General' && d.name !== 'Coordinador General').map(d => (
-                    <SelectItem key={d.id} value={d.id}>
-                      {d.name} — {d.responsibleName}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-                <SelectSeparator />
-                <SelectGroup>
-                  <SelectLabel>UEB</SelectLabel>
-                  {uebsList.map(d => (
-                    <SelectItem key={d.id} value={d.id}>
-                      {d.name} — {d.responsibleName}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-            {isDirectorGeneral && (
-              <Badge className="bg-amber-500 text-white text-[10px] px-2 py-0.5 flex-shrink-0">
-                <Shield className="size-3 mr-1" />
-                Admin
-              </Badge>
-            )}
-          </div>
+          {/* Session Info */}
+          {session && (
+            <div className="mt-2 flex items-center gap-2">
+              <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                <div className="bg-white/10 p-1 rounded-full flex-shrink-0">
+                  <User className="size-3.5 text-blue-300" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium truncate">{session.responsibleName}</p>
+                  <p className="text-[10px] text-blue-300 truncate">{session.departmentName}</p>
+                </div>
+              </div>
+              {isDirectorGeneral && (
+                <Badge className="bg-amber-500 text-white text-[10px] px-2 py-0.5 flex-shrink-0">
+                  <Shield className="size-3 mr-1" />
+                  Admin
+                </Badge>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleLogout}
+                className="h-7 text-[11px] text-blue-300 hover:text-white hover:bg-white/10 px-2 flex-shrink-0"
+              >
+                <LogOut className="size-3.5 mr-1" />
+                <span className="hidden sm:inline">Salir</span>
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Desktop Navigation Tabs */}

@@ -53,7 +53,7 @@ interface EmailParams {
   to: string | string[]
   subject: string
   html: string
-  emailType: 'RECORDATORIO' | 'NOTIFICACION' | 'CONFIRMACION' | 'EN_FECHA' | 'INCUMPLIDO'
+  emailType: 'RECORDATORIO' | 'NOTIFICACION' | 'CONFIRMACION' | 'EN_FECHA' | 'INCUMPLIDO' | 'CREDENCIALES'
 }
 
 interface RequestEmailData {
@@ -329,6 +329,83 @@ export function deadlineApproachingTemplate(data: RequestEmailData): string {
   const footer = `<p style="margin:0;color:#64748b;font-size:12px;">Este correo fue enviado automáticamente por el Sistema de Control de Entrega de Informaciones.</p>`
 
   return baseTemplate('⏳ Plazo Próximo a Vencer', content, footer)
+}
+
+/**
+ * Template for login credentials email (CREDENCIALES)
+ */
+export function credentialsTemplate(data: {
+  responsibleName: string
+  departmentName: string
+  email: string
+  tempPassword: string
+  token: string
+  appUrl: string
+}): string {
+  const content = `
+    <p style="margin:0 0 12px;color:#334155;font-size:14px;line-height:1.5;">
+      Estimado/a <strong>${data.responsibleName}</strong>,
+    </p>
+    <p style="margin:0 0 16px;color:#334155;font-size:14px;line-height:1.5;">
+      Se ha creado su cuenta en el Sistema de Control de Entrega de Informaciones de GEOCUBA Camagüey - Ciego de Ávila. A continuación encontrará sus credenciales de acceso:
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;">
+                <span style="color:#64748b;font-size:12px;font-weight:500;">Dirección / Unidad</span><br>
+                <span style="color:#1e293b;font-size:14px;font-weight:600;">${data.departmentName}</span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;">
+                <span style="color:#64748b;font-size:12px;font-weight:500;">Correo de Acceso</span><br>
+                <span style="color:#1e293b;font-size:14px;font-weight:600;">${data.email}</span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:8px 0;border-bottom:1px solid #e2e8f0;">
+                <span style="color:#64748b;font-size:12px;font-weight:500;">Contraseña Temporal</span><br>
+                <span style="color:#dc2626;font-size:18px;font-weight:700;letter-spacing:2px;font-family:monospace;">${data.tempPassword}</span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:8px 0;">
+                <span style="color:#64748b;font-size:12px;font-weight:500;">Token de Seguridad</span><br>
+                <span style="color:#1e40af;font-size:16px;font-weight:700;letter-spacing:1px;font-family:monospace;word-break:break-all;">${data.token}</span>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#eff6ff;border:1px solid #93c5fd;border-radius:8px;margin-top:16px;">
+      <tr>
+        <td style="padding:12px 16px;">
+          <span style="color:#1e40af;font-size:13px;font-weight:600;">📌 Instrucciones para su primer acceso:</span><br>
+          <ol style="margin:8px 0 0;padding-left:20px;color:#1e3a5f;font-size:13px;line-height:1.8;">
+            <li>Acceda al sistema en <a href="${data.appUrl}" style="color:#2563eb;font-weight:500;">${data.appUrl}</a></li>
+            <li>Ingrese su correo y la <strong>contraseña temporal</strong></li>
+            <li>El sistema le pedirá el <strong>token de seguridad</strong> para verificar su identidad</li>
+            <li>Cree su nueva contraseña personal</li>
+          </ol>
+        </td>
+      </tr>
+    </table>
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#fef2f2;border:1px solid #fca5a5;border-radius:8px;margin-top:12px;">
+      <tr>
+        <td style="padding:10px 16px;">
+          <span style="color:#991b1b;font-size:12px;font-weight:600;">⚠️ Importante:</span>
+          <span style="color:#7f1d1d;font-size:12px;">Esta contraseña y token son de un solo uso. Guárdelos en un lugar seguro y no los comparta con nadie.</span>
+        </td>
+      </tr>
+    </table>`
+
+  const footer = `<p style="margin:0;color:#64748b;font-size:12px;">Este correo fue enviado automáticamente por el Sistema de Control de Entrega de Informaciones. Si no solicitó este acceso, ignore este correo.</p>`
+
+  return baseTemplate('🔐 Credenciales de Acceso al Sistema', content, footer)
 }
 
 // ============================================================================

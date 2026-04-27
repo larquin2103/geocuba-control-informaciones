@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { getSession } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
 
 // GET /api/requests/[id] - Get a single request with full details
@@ -140,26 +141,22 @@ export async function PATCH(
 
 // DELETE /api/requests/[id] - Delete a request (Director General only)
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params
 
-    // Check authorization: only Director General can delete requests
-    const authDeptId = request.headers.get('x-auth-dept-id')
-    if (!authDeptId) {
+    // Check authorization via session
+    const session = await getSession()
+    if (!session) {
       return NextResponse.json(
-        { error: 'Se requiere identificación de departamento para eliminar solicitudes' },
-        { status: 403 }
+        { error: 'Debe iniciar sesión para realizar esta acción' },
+        { status: 401 }
       )
     }
 
-    const directorDept = await db.department.findFirst({
-      where: { name: 'Director General' },
-    })
-
-    if (!directorDept || authDeptId !== directorDept.id) {
+    if (!session.isDirectorGeneral) {
       return NextResponse.json(
         { error: 'Solo el Director General puede eliminar solicitudes' },
         { status: 403 }

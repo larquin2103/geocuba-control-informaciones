@@ -25,6 +25,12 @@ model Department {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  // Campos de autenticación
+  passwordHash    String?  // Hash de la contraseña (null = primer inicio pendiente)
+  loginToken      String?  // Token temporal para configurar contraseña
+  loginTokenExpires DateTime? // Expiración del token
+  lastLoginAt     DateTime? // Último acceso
+
   // Relaciones - Solicitudes donde este depto es el solicitante
   requestedBy     InformationRequest[] @relation("RequesterDepartment")
   // Relaciones - Solicitudes donde este depto debe entregar
