@@ -8,8 +8,8 @@ const JWT_SECRET = new TextEncoder().encode(
 
 const COOKIE_NAME = 'geocuba_session'
 
-// Routes that don't require authentication
-const PUBLIC_ROUTES = ['/login', '/admin', '/api/auth', '/api/admin', '/api/departments/seed', '/api/health']
+// Routes that don't require authentication (page routes and public APIs)
+const PUBLIC_ROUTES = ['/login', '/admin', '/api/auth', '/api/departments/seed', '/api/health']
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -61,10 +61,19 @@ export async function proxy(request: NextRequest) {
     await jwtVerify(token, JWT_SECRET)
     return NextResponse.next()
   } catch {
-    // Token is invalid or expired, redirect to login
+    // Token is invalid or expired
+    // For API routes, return 401 JSON instead of redirecting
+    if (pathname.startsWith('/api/')) {
+      const response = NextResponse.json(
+        { error: 'Sesión expirada', authenticated: false },
+        { status: 401 }
+      )
+      response.cookies.delete(COOKIE_NAME)
+      return response
+    }
+    // For page routes, redirect to login
     const loginUrl = new URL('/login', request.url)
     const response = NextResponse.redirect(loginUrl)
-    // Clear the invalid cookie
     response.cookies.delete(COOKIE_NAME)
     return response
   }

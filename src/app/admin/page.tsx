@@ -86,13 +86,37 @@ export default function AdminPage() {
   const [deptFilter, setDeptFilter] = useState('')
   const [credentialsResult, setCredentialsResult] = useState<any>(null)
 
-  const handleLogin = (e: React.FormEvent) => {
+  const [isLoggingIn, setIsLoggingIn] = useState(false)
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (loginEmail === 'larquin@camaguey.geocuba.cu' && loginPass === 'geocuba2025*') {
-      setIsAuthed(true)
-      sessionStorage.setItem('geocuba_admin_auth', 'true')
-    } else {
-      toast.error('Correo o contraseña incorrectos')
+    setIsLoggingIn(true)
+    try {
+      // Use the real login API to get a JWT cookie - this allows all API calls to work
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: loginEmail, password: loginPass }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        // Only allow Director General to access admin panel
+        if (data.user?.isDirectorGeneral) {
+          setIsAuthed(true)
+          sessionStorage.setItem('geocuba_admin_auth', 'true')
+          toast.success('Sesión iniciada correctamente')
+        } else {
+          toast.error('Solo el Director General puede acceder al panel de administración')
+        }
+      } else if (data.requiresTokenVerification) {
+        toast.error('Debe verificar su token de seguridad primero. Inicie sesión desde la página principal.')
+      } else {
+        toast.error(data.error || 'Correo o contraseña incorrectos')
+      }
+    } catch {
+      toast.error('Error de conexión al servidor')
+    } finally {
+      setIsLoggingIn(false)
     }
   }
 
@@ -126,7 +150,10 @@ export default function AdminPage() {
                   </button>
                 </div>
               </div>
-              <Button type="submit" className="w-full bg-blue-700 hover:bg-blue-800">Iniciar Sesión</Button>
+              <Button type="submit" className="w-full bg-blue-700 hover:bg-blue-800" disabled={isLoggingIn}>
+                {isLoggingIn ? <Loader2 className="size-4 mr-2 animate-spin" /> : null}
+                {isLoggingIn ? 'Iniciando...' : 'Iniciar Sesión'}
+              </Button>
             </form>
           </CardContent>
         </Card>
@@ -147,7 +174,12 @@ export default function AdminPage() {
           <Building2 className="size-5" />
           <h1 className="font-bold text-sm sm:text-base">GEOCUBA CM-CA - Panel de Administración</h1>
         </div>
-        <Button variant="ghost" size="sm" className="text-blue-200 hover:text-white hover:bg-blue-800" onClick={() => { sessionStorage.removeItem('geocuba_admin_auth'); setIsAuthed(false) }}>
+        <Button variant="ghost" size="sm" className="text-blue-200 hover:text-white hover:bg-blue-800" onClick={async () => {
+          sessionStorage.removeItem('geocuba_admin_auth')
+          setIsAuthed(false)
+          // Also logout from the JWT session
+          try { await fetch('/api/auth/logout', { method: 'POST' }) } catch {}
+        }}>
           <LogOut className="size-4 mr-1" /> Salir
         </Button>
       </div>
