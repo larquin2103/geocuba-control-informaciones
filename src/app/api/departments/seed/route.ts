@@ -1,5 +1,11 @@
 import { db } from '@/lib/db'
+import { hashPassword } from '@/lib/auth'
 import { NextResponse } from 'next/server'
+
+// GET /api/departments/seed - Seed initial departments (convenient browser access)
+export async function GET() {
+  return POST()
+}
 
 // POST /api/departments/seed - Seed initial departments
 export async function POST() {
@@ -167,9 +173,25 @@ export async function POST() {
       }
     }
 
+    // Set initial password for Director General if not set
+    const director = await db.department.findFirst({
+      where: { name: 'Director General' },
+    })
+    let passwordSet = false
+    if (director && !director.passwordHash) {
+      const hashedPassword = await hashPassword('geocuba2025*')
+      await db.department.update({
+        where: { id: director.id },
+        data: { passwordHash: hashedPassword },
+      })
+      passwordSet = true
+    }
+
     return NextResponse.json({
       message: 'Seed completed successfully',
       ...results,
+      directorPasswordSet: passwordSet,
+      directorLogin: passwordSet ? 'larquin@camaguey.geocuba.cu / geocuba2025*' : undefined,
     })
   } catch (error) {
     console.error('Error seeding departments:', error)

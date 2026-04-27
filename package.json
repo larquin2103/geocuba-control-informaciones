@@ -3,9 +3,10 @@
   "version": "0.2.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3000",
+    "dev": "prisma generate && next dev -p 3000",
+    "setup": "prisma generate && prisma db push && echo Setup complete! Run npm run dev to start.",
     "build": "prisma generate && next build",
-    "start": "next start -H 0.0.0.0 -p 3000",
+    "start": "prisma generate && next start -H 0.0.0.0 -p 3000",
     "lint": "eslint .",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
