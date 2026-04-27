@@ -5,7 +5,7 @@ import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   Building2, Mail, Lock, KeyRound, Loader2, Shield,
-  ArrowRight, Eye, EyeOff, CheckCircle2, Info
+  ArrowRight, Eye, EyeOff, CheckCircle2, Info, User
 } from 'lucide-react'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -18,15 +18,6 @@ import { Label } from '@/components/ui/label'
 // ============================================================================
 
 type LoginStep = 'email' | 'password' | 'verify-token' | 'setup-password'
-
-interface SessionUser {
-  departmentId: string
-  email: string
-  departmentName: string
-  responsibleName: string
-  departmentType: string
-  isDirectorGeneral: boolean
-}
 
 // ============================================================================
 // LOGIN PAGE
@@ -42,8 +33,41 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [verifiedDeptId, setVerifiedDeptId] = useState('')
   const [initMessage, setInitMessage] = useState('')
+  const [isFirstTime, setIsFirstTime] = useState(false)
+  const [deptInfo, setDeptInfo] = useState<{ name: string; responsibleName: string } | null>(null)
 
-  // Step 1: Initialize credentials (first-time user)
+  // Step 1: Check if email exists in the system
+  const checkEmail = useMutation({
+    mutationFn: async (emailAddr: string) => {
+      const res = await fetch('/api/auth/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailAddr }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Correo no encontrado')
+      return data as { exists: boolean; hasPassword: boolean; departmentName: string; responsibleName: string }
+    },
+    onSuccess: (data) => {
+      setDeptInfo({ name: data.departmentName, responsibleName: data.responsibleName })
+
+      if (!data.hasPassword) {
+        // First time user - initialize credentials (generate temp password + token, send via email)
+        setIsFirstTime(true)
+        initCredentials.mutate(email)
+      } else {
+        // Returning user - just go to password step
+        setIsFirstTime(false)
+        setInitMessage('')
+        setStep('password')
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+
+  // Initialize credentials for first-time user
   const initCredentials = useMutation({
     mutationFn: async (emailAddr: string) => {
       const res = await fetch('/api/auth/init', {
@@ -58,11 +82,12 @@ export default function LoginPage() {
     onSuccess: (data) => {
       setInitMessage(data.message)
       setStep('password')
-      toast.success('Credenciales enviadas a su correo')
+      toast.success('Credenciales enviadas a su correo electrónico')
     },
     onError: (error: Error) => {
       if (error.message.includes('ya tiene una contraseña')) {
-        // User already has password, go to login
+        // Edge case: user already has password now, just go to login
+        setIsFirstTime(false)
         setStep('password')
         toast.info('Su cuenta ya está activa. Ingrese su contraseña.')
       } else {
@@ -88,12 +113,19 @@ export default function LoginPage() {
       }
       return data
     },
-    onSuccess: () => {
-      window.location.href = '/'
+    onSuccess: (data) => {
+      // If user has a pending token (first-time login), require token verification
+      if (data.requiresTokenVerification) {
+        setStep('verify-token')
+        toast.info('Debe verificar su identidad con el token de seguridad')
+      } else {
+        window.location.href = '/'
+      }
     },
     onError: (error: Error) => {
       if (error.message === 'FIRST_TIME_LOGIN') {
-        initCredentials.mutate(email)
+        setStep('verify-token')
+        toast.info('Verifique su identidad con el token enviado a su correo')
       } else {
         toast.error(error.message)
       }
@@ -143,29 +175,28 @@ export default function LoginPage() {
     },
   })
 
-  // Handle email submit
+  // Handle email submit (Step 1)
   const handleEmailSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!email.trim()) return
-    // Check if this is a first-time login attempt
-    loginMutation.mutate({ emailAddr: email, pass: '' })
+    checkEmail.mutate(email)
   }
 
-  // Handle login submit
+  // Handle login submit (Step 2)
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!email || !password) return
     loginMutation.mutate({ emailAddr: email, pass: password })
   }
 
-  // Handle token verification
+  // Handle token verification (Step 3)
   const handleTokenVerify = (e: React.FormEvent) => {
     e.preventDefault()
     if (!token.trim()) return
     verifyTokenMutation.mutate({ emailAddr: email, pass: password, securityToken: token })
   }
 
-  // Handle password setup
+  // Handle password setup (Step 4)
   const handlePasswordSetup = (e: React.FormEvent) => {
     e.preventDefault()
     if (!newPassword || newPassword !== confirmPassword) return
@@ -176,7 +207,7 @@ export default function LoginPage() {
     setupPasswordMutation.mutate({ deptId: verifiedDeptId, newPass: newPassword })
   }
 
-  const isLoading = initCredentials.isPending || loginMutation.isPending || verifyTokenMutation.isPending || setupPasswordMutation.isPending
+  const isLoading = checkEmail.isPending || initCredentials.isPending || loginMutation.isPending || verifyTokenMutation.isPending || setupPasswordMutation.isPending
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-950 via-blue-900 to-slate-900 p-4">
@@ -198,14 +229,14 @@ export default function LoginPage() {
             { key: 'verify', label: '3', done: step === 'setup-password' },
             { key: 'setup', label: '4', done: false },
           ].filter(s => {
-            // Only show steps that are relevant
+            // Only show token/setup steps when relevant (first-time login)
             if (s.key === 'verify' || s.key === 'setup') {
-              return step === 'verify-token' || step === 'setup-password'
+              return isFirstTime || step === 'verify-token' || step === 'setup-password'
             }
             return true
           }).map((s, i, arr) => (
             <React.Fragment key={s.key}>
-              <div className={`flex items-center gap-1.5 ${s.done ? 'text-emerald-400' : arr[i] ? 'text-blue-300' : 'text-blue-500'}`}>
+              <div className={`flex items-center gap-1.5 ${s.done ? 'text-emerald-400' : 'text-blue-300'}`}>
                 <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
                   s.done ? 'bg-emerald-500 text-white' : 'bg-white/20 text-white'
                 }`}>
@@ -269,7 +300,15 @@ export default function LoginPage() {
               <CardHeader className="text-center pb-2">
                 <CardTitle className="text-lg">Ingrese su Contraseña</CardTitle>
                 <CardDescription>
-                  <span className="text-blue-700 font-medium">{email}</span>
+                  <div className="flex items-center justify-center gap-1.5 mt-1">
+                    <User className="size-3.5 text-blue-700" />
+                    <span className="text-blue-700 font-medium">{email}</span>
+                  </div>
+                  {deptInfo && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {deptInfo.responsibleName} · {deptInfo.name}
+                    </p>
+                  )}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -279,15 +318,25 @@ export default function LoginPage() {
                     <p className="text-xs text-blue-700">{initMessage}</p>
                   </div>
                 )}
+                {isFirstTime && !initMessage && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 flex items-start gap-2">
+                    <Info className="size-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-amber-700">
+                      Es su primer acceso. Se enviarán credenciales temporales a su correo electrónico.
+                    </p>
+                  </div>
+                )}
                 <form onSubmit={handleLoginSubmit} className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="password">Contraseña</Label>
+                    <Label htmlFor="password">
+                      {isFirstTime ? 'Contraseña Temporal' : 'Contraseña'}
+                    </Label>
                     <div className="relative">
                       <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                       <Input
                         id="password"
                         type={showPassword ? 'text' : 'password'}
-                        placeholder="Ingrese su contraseña"
+                        placeholder={isFirstTime ? 'Ingrese la contraseña temporal de su correo' : 'Ingrese su contraseña'}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         className="pl-9 pr-10 min-h-[44px]"
@@ -319,7 +368,7 @@ export default function LoginPage() {
                     type="button"
                     variant="ghost"
                     className="w-full text-xs"
-                    onClick={() => setStep('email')}
+                    onClick={() => { setStep('email'); setPassword(''); setInitMessage(''); }}
                     disabled={isLoading}
                   >
                     Cambiar correo
@@ -346,7 +395,7 @@ export default function LoginPage() {
                   <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2">
                     <Shield className="size-4 text-amber-600 mt-0.5 flex-shrink-0" />
                     <p className="text-xs text-amber-700">
-                      Por seguridad, debe ingresar el token que recibió en su correo para verificar su identidad antes de crear su contraseña.
+                      Por seguridad, debe ingresar el token que recibió en su correo para verificar su identidad antes de crear su contraseña definitiva.
                     </p>
                   </div>
                   <div className="space-y-2">
@@ -356,7 +405,7 @@ export default function LoginPage() {
                       <Input
                         id="token"
                         type="text"
-                        placeholder="Ingrese el token de 64 caracteres"
+                        placeholder="Ingrese el token de seguridad"
                         value={token}
                         onChange={(e) => setToken(e.target.value)}
                         className="pl-9 min-h-[44px] font-mono text-sm"

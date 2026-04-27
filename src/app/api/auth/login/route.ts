@@ -1,7 +1,6 @@
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { verifyPassword, generateToken, generateTempPassword, hashPassword, createSessionToken, setSessionCookie } from '@/lib/auth'
-import { sendEmail, credentialsTemplate } from '@/lib/email'
-import { NextResponse } from 'next/server'
+import { verifyPassword, createSessionToken, setSessionCookie } from '@/lib/auth'
 
 // POST /api/auth/login - Authenticate a department head
 export async function POST(request: NextRequest) {
@@ -44,6 +43,16 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Check if user has a pending security token (first-time setup not yet completed)
+    // If they have a loginToken, they need to verify it and set their own password
+    if (department.loginToken) {
+      return NextResponse.json({
+        success: false,
+        requiresTokenVerification: true,
+        message: 'Debe verificar su token de seguridad y crear su contraseña definitiva.',
+      })
+    }
+
     // Create session
     const isDirectorGeneral = department.name === 'Director General'
     const sessionData = {
@@ -67,6 +76,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       user: sessionData,
+      requiresTokenVerification: false,
     })
   } catch (error) {
     console.error('Error en login:', error)
@@ -76,5 +86,3 @@ export async function POST(request: NextRequest) {
     )
   }
 }
-
-import { NextRequest } from 'next/server'
