@@ -9,7 +9,7 @@ const JWT_SECRET = new TextEncoder().encode(
 const COOKIE_NAME = 'geocuba_session'
 
 // Routes that don't require authentication
-const PUBLIC_ROUTES = ['/login', '/admin', '/api/auth', '/api/admin', '/api/departments/seed']
+const PUBLIC_ROUTES = ['/login', '/admin', '/api/auth', '/api/admin', '/api/departments/seed', '/api/health']
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl

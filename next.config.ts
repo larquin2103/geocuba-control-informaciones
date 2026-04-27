@@ -5,9 +5,8 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
-  output: "standalone",
-  // Ensure critical server-side dependencies are included in standalone build
-  // and not bundled by Turbopack (which can break native binaries like Prisma)
+  // Note: "standalone" output removed - it's only needed for Docker/custom server deployments
+  // The sandbox deployment system uses the standard build output
   serverExternalPackages: [
     "bcryptjs",
     "nodemailer",
