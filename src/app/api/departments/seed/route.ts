@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server'
 // POST /api/departments/seed - Seed initial departments
 export async function POST() {
   try {
-    // First, rename old department names to new ones
+    // Rename old department names to new ones (safe - skips if not found)
     const nameRenames: Record<string, string> = {
       'Departamento de Capital Humano': 'Dirección de Capital Humano',
       'Departamento de Inversiones': 'Dirección de Inversiones',
@@ -12,12 +12,16 @@ export async function POST() {
     }
 
     for (const [oldName, newName] of Object.entries(nameRenames)) {
-      const existing = await db.department.findUnique({ where: { name: oldName } })
-      if (existing) {
-        await db.department.update({
-          where: { id: existing.id },
-          data: { name: newName },
-        })
+      try {
+        const existing = await db.department.findUnique({ where: { name: oldName } })
+        if (existing) {
+          await db.department.update({
+            where: { id: existing.id },
+            data: { name: newName },
+          })
+        }
+      } catch {
+        // Skip if rename fails (name might not exist)
       }
     }
 

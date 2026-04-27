@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "bash start.sh",
-    "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/ && cp -r prisma .next/standalone/ && cp -r db .next/standalone/",
+    "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/ && cp -r prisma .next/standalone/ && cp -r db .next/standalone/ && printf 'DATABASE_URL=file:./db/custom.db\\nSMTP_HOST=192.168.7.4\\nSMTP_PORT=25\\nSMTP_SECURE=false\\nSMTP_USER=larquin@camaguey.geocuba.cu\\nSMTP_PASS=karenenrrique2103new*\\nSMTP_FROM=GEOCUBA CM-CA <larquin@camaguey.geocuba.cu>\\n' > .next/standalone/.env.production",
     "start": "cd .next/standalone && NODE_ENV=production HOSTNAME=0.0.0.0 PORT=3000 node server.js",
     "lint": "eslint .",
     "db:push": "prisma db push",
