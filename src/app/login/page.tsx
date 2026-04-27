@@ -20,6 +20,23 @@ import { Label } from '@/components/ui/label'
 
 type LoginStep = 'email' | 'password' | 'credentials-shown' | 'verify-token' | 'setup-password'
 
+/** Safe fetch that handles non-JSON responses gracefully */
+async function safeApiFetch<T>(url: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(url, options)
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    let errorMsg = `Error del servidor (${res.status})`
+    try { const d = JSON.parse(text); errorMsg = d.error || errorMsg } catch {}
+    throw new Error(errorMsg)
+  }
+  const text = await res.text()
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    throw new Error('Respuesta del servidor no es válida')
+  }
+}
+
 // ============================================================================
 // LOGIN PAGE
 // ============================================================================
@@ -56,16 +73,11 @@ export default function LoginPage() {
 
   // Step 1: Check if email exists in the system
   const checkEmail = useMutation({
-    mutationFn: async (emailAddr: string) => {
-      const res = await fetch('/api/auth/check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: emailAddr }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Correo no encontrado')
-      return data as { exists: boolean; hasPassword: boolean; departmentName: string; responsibleName: string }
-    },
+    mutationFn: (emailAddr: string) => safeApiFetch<{ exists: boolean; hasPassword: boolean; departmentName: string; responsibleName: string }>('/api/auth/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: emailAddr }),
+    }),
     onSuccess: (data) => {
       setDeptInfo({ name: data.departmentName, responsibleName: data.responsibleName })
 
@@ -87,16 +99,11 @@ export default function LoginPage() {
 
   // Initialize credentials for first-time user
   const initCredentials = useMutation({
-    mutationFn: async (emailAddr: string) => {
-      const res = await fetch('/api/auth/init', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: emailAddr }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Error al inicializar credenciales')
-      return data
-    },
+    mutationFn: (emailAddr: string) => safeApiFetch<any>('/api/auth/init', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: emailAddr }),
+    }),
     onSuccess: (data) => {
       if (!data.emailSent && data.tempPassword && data.token) {
         // Email failed - show credentials on screen
@@ -123,16 +130,11 @@ export default function LoginPage() {
 
   // Reset credentials (forgot password)
   const resetCredentials = useMutation({
-    mutationFn: async (emailAddr: string) => {
-      const res = await fetch('/api/auth/reset', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: emailAddr }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Error al resetear credenciales')
-      return data
-    },
+    mutationFn: (emailAddr: string) => safeApiFetch<any>('/api/auth/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: emailAddr }),
+    }),
     onSuccess: (data) => {
       if (!data.emailSent && data.tempPassword && data.token) {
         // Email failed - show credentials on screen
@@ -155,19 +157,18 @@ export default function LoginPage() {
   // Step 2: Login with email + password
   const loginMutation = useMutation({
     mutationFn: async ({ emailAddr, pass }: { emailAddr: string; pass: string }) => {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: emailAddr, password: pass }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        if (data.error === 'FIRST_TIME_LOGIN') {
+      try {
+        return await safeApiFetch<any>('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: emailAddr, password: pass }),
+        })
+      } catch (err) {
+        if (err instanceof Error && err.message === 'FIRST_TIME_LOGIN') {
           throw new Error('FIRST_TIME_LOGIN')
         }
-        throw new Error(data.error || 'Error al iniciar sesión')
+        throw err
       }
-      return data
     },
     onSuccess: (data) => {
       if (data.requiresTokenVerification) {
@@ -189,16 +190,12 @@ export default function LoginPage() {
 
   // Step 3: Verify security token
   const verifyTokenMutation = useMutation({
-    mutationFn: async ({ emailAddr, pass, securityToken }: { emailAddr: string; pass: string; securityToken: string }) => {
-      const res = await fetch('/api/auth/verify-token', {
+    mutationFn: ({ emailAddr, pass, securityToken }: { emailAddr: string; pass: string; securityToken: string }) =>
+      safeApiFetch<any>('/api/auth/verify-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: emailAddr, password: pass, token: securityToken }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Token inválido')
-      return data
-    },
+      }),
     onSuccess: (data) => {
       setVerifiedDeptId(data.departmentId)
       setStep('setup-password')
@@ -211,16 +208,12 @@ export default function LoginPage() {
 
   // Step 4: Setup new password
   const setupPasswordMutation = useMutation({
-    mutationFn: async ({ deptId, newPass }: { deptId: string; newPass: string }) => {
-      const res = await fetch('/api/auth/setup-password', {
+    mutationFn: ({ deptId, newPass }: { deptId: string; newPass: string }) =>
+      safeApiFetch<any>('/api/auth/setup-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ departmentId: deptId, newPassword: newPass }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Error al configurar contraseña')
-      return data
-    },
+      }),
     onSuccess: () => {
       toast.success('Contraseña configurada exitosamente')
       window.location.href = '/'

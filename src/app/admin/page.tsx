@@ -20,6 +20,23 @@ import { Badge } from '@/components/ui/badge'
 // TYPES
 // ============================================================================
 
+/** Safe fetch that handles non-JSON responses and 401 errors gracefully */
+async function safeApiFetch<T>(url: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(url, options)
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    let errorMsg = `Error del servidor (${res.status})`
+    try { const d = JSON.parse(text); errorMsg = d.error || errorMsg } catch {}
+    throw new Error(errorMsg)
+  }
+  const text = await res.text()
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    throw new Error('Respuesta del servidor no es válida')
+  }
+}
+
 type TabId = 'dashboard' | 'departments' | 'requests' | 'emails' | 'affectations' | 'smtp'
 
 interface DashboardData {
@@ -242,7 +259,7 @@ export default function AdminPage() {
         {activeTab === 'requests' && <RequestsTab />}
         {activeTab === 'emails' && <EmailsTab />}
         {activeTab === 'affectations' && <AffectationsTab />}
-        {activeTab === 'smtp' && <SmtpTab />}
+        {activeTab === 'smtp' && <SmtpTab onSessionExpired={() => { sessionStorage.removeItem('geocuba_admin_auth'); setIsAuthed(false) }} />}
       </div>
     </div>
   )
@@ -255,11 +272,7 @@ export default function AdminPage() {
 function DashboardTab() {
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['admin-dashboard'],
-    queryFn: async () => {
-      const res = await fetch('/api/admin/dashboard')
-      if (!res.ok) throw new Error('Error cargando dashboard')
-      return res.json() as Promise<DashboardData>
-    },
+    queryFn: () => safeApiFetch<DashboardData>('/api/admin/dashboard'),
   })
 
   if (isLoading) return <div className="flex justify-center py-12"><Loader2 className="size-8 animate-spin text-blue-600" /></div>
@@ -375,20 +388,16 @@ function DepartmentsTab({ search, setSearch, filter, setFilter, onReset }: {
       const params = new URLSearchParams()
       if (search) params.set('search', search)
       if (filter) params.set('filter', filter)
-      const res = await fetch(`/api/admin/departments?${params}`)
-      if (!res.ok) throw new Error('Error cargando departamentos')
-      return res.json() as Promise<DeptData[]>
+      return safeApiFetch<DeptData[]>(`/api/admin/departments?${params}`)
     },
   })
 
   const resetMutation = useMutation({
     mutationFn: async (deptId: string) => {
-      const res = await fetch('/api/admin/reset-password', {
+      return safeApiFetch<any>('/api/admin/reset-password', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ departmentId: deptId }),
       })
-      if (!res.ok) throw new Error('Error al restablecer')
-      return res.json()
     },
     onSuccess: (data) => {
       onReset(data)
@@ -465,9 +474,7 @@ function RequestsTab() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin-requests'],
     queryFn: async () => {
-      const res = await fetch('/api/requests')
-      if (!res.ok) throw new Error('Error')
-      return res.json()
+      return safeApiFetch<any[]>('/api/requests')
     },
   })
 
@@ -527,9 +534,7 @@ function EmailsTab() {
       params.set('limit', '50')
       if (typeFilter) params.set('type', typeFilter)
       if (successFilter) params.set('success', successFilter)
-      const res = await fetch(`/api/admin/email-logs?${params}`)
-      if (!res.ok) throw new Error('Error cargando correos')
-      return res.json() as Promise<{ logs: EmailLogData[]; total: number; page: number; totalPages: number }>
+      return safeApiFetch<{ logs: EmailLogData[]; total: number; page: number; totalPages: number }>(`/api/admin/email-logs?${params}`)
     },
   })
 
@@ -636,9 +641,7 @@ function AffectationsTab() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin-affectations'],
     queryFn: async () => {
-      const res = await fetch('/api/reports/affectation')
-      if (!res.ok) throw new Error('Error')
-      return res.json()
+      return safeApiFetch<any>('/api/reports/affectation')
     },
   })
 
@@ -682,7 +685,7 @@ function AffectationsTab() {
 // SMTP DIAGNOSTICS TAB
 // ============================================================================
 
-function SmtpTab() {
+function SmtpTab({ onSessionExpired }: { onSessionExpired: () => void }) {
   const [testResult, setTestResult] = useState<SmtpTestResult | null>(null)
   const [isTesting, setIsTesting] = useState(false)
   const [testEmail, setTestEmail] = useState('larquin@camaguey.geocuba.cu')
@@ -693,8 +696,7 @@ function SmtpTab() {
     setIsTesting(true)
     setTestResult(null)
     try {
-      const res = await fetch('/api/admin/test-smtp')
-      const data = await res.json() as SmtpTestResult
+      const data = await safeApiFetch<SmtpTestResult>('/api/admin/test-smtp')
       setTestResult(data)
       if (data.connected) {
         toast.success('Conexión SMTP exitosa')
@@ -702,6 +704,11 @@ function SmtpTab() {
         toast.error(`Conexión SMTP fallida: ${data.error}`)
       }
     } catch (err) {
+      if (err instanceof Error && err.message.includes('401')) {
+        toast.error('Sesión expirada. Inicie sesión nuevamente.')
+        onSessionExpired()
+        return
+      }
       setTestResult({
         connected: false,
         authenticated: false,
@@ -721,7 +728,7 @@ function SmtpTab() {
     setSendingTest(true)
     setTestEmailResult(null)
     try {
-      const res = await fetch('/api/email/remind', {
+      const data = await safeApiFetch<any>('/api/email/remind', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -729,8 +736,7 @@ function SmtpTab() {
           message: 'Este es un correo de prueba del sistema GEOCUBA SCEI',
         }),
       })
-      const data = await res.json()
-      if (res.ok && !data.error) {
+      if (!data.error) {
         setTestEmailResult({ success: true, message: `Correo enviado exitosamente a ${testEmail}` })
         toast.success('Correo de prueba enviado')
       } else {
@@ -738,6 +744,11 @@ function SmtpTab() {
         toast.error('Error al enviar correo de prueba')
       }
     } catch (err) {
+      if (err instanceof Error && err.message.includes('401')) {
+        toast.error('Sesión expirada. Inicie sesión nuevamente.')
+        onSessionExpired()
+        return
+      }
       setTestEmailResult({ success: false, message: err instanceof Error ? err.message : 'Error desconocido' })
       toast.error('Error al enviar correo de prueba')
     } finally {
@@ -870,9 +881,7 @@ function RecentEmailErrors() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin-email-errors'],
     queryFn: async () => {
-      const res = await fetch('/api/admin/email-logs?success=false&limit=10')
-      if (!res.ok) throw new Error('Error')
-      return res.json() as Promise<{ logs: EmailLogData[]; total: number }>
+      return safeApiFetch<{ logs: EmailLogData[]; total: number }>('/api/admin/email-logs?success=false&limit=10')
     },
   })
 

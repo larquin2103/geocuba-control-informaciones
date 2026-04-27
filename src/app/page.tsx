@@ -244,14 +244,27 @@ function CollapsibleSection({ show, children }: { show: boolean; children: React
 // CUSTOM HOOKS
 // ============================================================================
 
+/** Safe fetch that handles non-JSON responses gracefully */
+async function safeApiFetch<T>(url: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(url, options)
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    let errorMsg = `Error del servidor (${res.status})`
+    try { const d = JSON.parse(text); errorMsg = d.error || errorMsg } catch {}
+    throw new Error(errorMsg)
+  }
+  const text = await res.text()
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    throw new Error('Respuesta del servidor no es válida')
+  }
+}
+
 function useDepartments() {
   return useQuery({
     queryKey: ['departments'],
-    queryFn: async () => {
-      const res = await fetch('/api/departments')
-      if (!res.ok) throw new Error('Error cargando departamentos')
-      return res.json() as Promise<Department[]>
-    },
+    queryFn: () => safeApiFetch<Department[]>('/api/departments'),
   })
 }
 
@@ -259,14 +272,12 @@ function useRequests() {
   const { statusFilter, deptFilter, searchQuery } = useAppStore()
   return useQuery({
     queryKey: ['requests', statusFilter, deptFilter, searchQuery],
-    queryFn: async () => {
+    queryFn: () => {
       const params = new URLSearchParams()
       if (statusFilter && statusFilter !== 'TODOS') params.set('status', statusFilter)
       if (deptFilter && deptFilter !== 'TODOS') params.set('departmentId', deptFilter)
       if (searchQuery) params.set('search', searchQuery)
-      const res = await fetch(`/api/requests?${params.toString()}`)
-      if (!res.ok) throw new Error('Error cargando solicitudes')
-      return res.json() as Promise<InformationRequest[]>
+      return safeApiFetch<InformationRequest[]>(`/api/requests?${params.toString()}`)
     },
   })
 }
@@ -274,33 +285,21 @@ function useRequests() {
 function useStats() {
   return useQuery({
     queryKey: ['stats'],
-    queryFn: async () => {
-      const res = await fetch('/api/stats')
-      if (!res.ok) throw new Error('Error cargando estadísticas')
-      return res.json() as Promise<StatsData>
-    },
+    queryFn: () => safeApiFetch<StatsData>('/api/stats'),
   })
 }
 
 function useComplianceReport() {
   return useQuery({
     queryKey: ['compliance-report'],
-    queryFn: async () => {
-      const res = await fetch('/api/reports/compliance')
-      if (!res.ok) throw new Error('Error cargando reporte de cumplimiento')
-      return res.json() as Promise<ComplianceData>
-    },
+    queryFn: () => safeApiFetch<ComplianceData>('/api/reports/compliance'),
   })
 }
 
 function useAffectationReport() {
   return useQuery({
     queryKey: ['affectation-report'],
-    queryFn: async () => {
-      const res = await fetch('/api/reports/affectation')
-      if (!res.ok) throw new Error('Error cargando reporte de afectación')
-      return res.json() as Promise<AffectationData>
-    },
+    queryFn: () => safeApiFetch<AffectationData>('/api/reports/affectation'),
   })
 }
 
@@ -317,10 +316,12 @@ function useSession() {
   return useQuery({
     queryKey: ['session'],
     queryFn: async () => {
-      const res = await fetch('/api/auth/session')
-      if (!res.ok) return null
-      const data = await res.json()
-      return data.authenticated ? data.user as SessionUser : null
+      try {
+        const data = await safeApiFetch<{ authenticated: boolean; user?: SessionUser }>('/api/auth/session')
+        return data.authenticated ? data.user as SessionUser : null
+      } catch {
+        return null
+      }
     },
     retry: false,
     staleTime: 5 * 60 * 1000, // 5 minutes
@@ -669,24 +670,17 @@ function NuevaSolicitudTab() {
   }
 
   const createRequest = useMutation({
-    mutationFn: async (data: typeof form) => {
-      const res = await fetch('/api/requests', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          requesterDeptId: data.requesterDeptId,
-          providerDeptIds: data.providerDeptIds,
-          description: data.description,
-          deadlineDate: data.deadlineDate?.toISOString(),
-          priority: data.priority,
-        }),
-      })
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error || 'Error al crear solicitud')
-      }
-      return res.json()
-    },
+    mutationFn: (data: typeof form) => safeApiFetch<any>('/api/requests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        requesterDeptId: data.requesterDeptId,
+        providerDeptIds: data.providerDeptIds,
+        description: data.description,
+        deadlineDate: data.deadlineDate?.toISOString(),
+        priority: data.priority,
+      }),
+    }),
     onSuccess: (data) => {
       const count = data.created || 1
       toast.success(`${count} solicitud${count > 1 ? 'es creadas' : ' creada'} exitosamente`)
@@ -1092,16 +1086,9 @@ function SolicitudesTab() {
   })
 
   const deleteRequest = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await fetch(`/api/requests/${id}`, {
-        method: 'DELETE',
-      })
-      if (!res.ok) {
-        const err = await res.json()
-        throw new Error(err.error || 'Error al eliminar solicitud')
-      }
-      return res.json()
-    },
+    mutationFn: (id: string) => safeApiFetch<any>(`/api/requests/${id}`, {
+      method: 'DELETE',
+    }),
     onSuccess: () => {
       toast.success('Solicitud eliminada correctamente')
       queryClient.invalidateQueries({ queryKey: ['requests'] })
