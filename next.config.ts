@@ -16,17 +16,9 @@ const nextConfig: NextConfig = {
     "@prisma/client",
     ".prisma/client",
   ],
-  // Experimental: ensure Prisma works with Turbopack in dev mode
-  experimental: {
-    serverComponentsExternalPackages: [
-      "bcryptjs",
-      "nodemailer",
-      "jose",
-      "prisma",
-      "@prisma/client",
-      ".prisma/client",
-    ],
-  },
+  allowedDevOrigins: [
+    ".space-z.ai",
+  ],
 };
 
 export default nextConfig;
