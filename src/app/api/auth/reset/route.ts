@@ -3,9 +3,8 @@ import { generateToken, generateTempPassword, hashPassword } from '@/lib/auth'
 import { sendEmail, credentialsTemplate } from '@/lib/email'
 import { NextRequest, NextResponse } from 'next/server'
 
-// POST /api/auth/init - Initialize credentials for a first-time user
-// Generates a temp password and token, sends them via email
-// If email fails, returns the credentials on screen so the user can use them
+// POST /api/auth/reset - Reset credentials for a user who forgot their password
+// Generates a new temp password and token, sends them via email
 export async function POST(request: NextRequest) {
   try {
     const { email } = await request.json()
@@ -29,20 +28,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // If already has password AND has verified (no pending token), don't allow re-init
-    if (department.passwordHash && !department.loginToken) {
-      return NextResponse.json(
-        { error: 'Esta cuenta ya tiene una contraseña configurada. Use la opción de inicio de sesión normal.' },
-        { status: 400 }
-      )
-    }
-
-    // Generate temp password and security token
+    // Generate new temp password and security token
     const tempPassword = generateTempPassword()
     const token = generateToken()
     const tokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
 
-    // Hash the temp password and store token
+    // Hash the new temp password and store token
     const hashedTempPassword = await hashPassword(tempPassword)
 
     await db.department.update({
@@ -67,17 +58,17 @@ export async function POST(request: NextRequest) {
 
     const emailResult = await sendEmail({
       to: department.email,
-      subject: '🔐 Credenciales de Acceso - Sistema de Control GEOCUBA',
+      subject: '🔐 Credenciales Reestablecidas - Sistema de Control GEOCUBA',
       html,
       emailType: 'CREDENCIALES',
     })
 
     if (!emailResult.success) {
-      console.error('Error enviando credenciales:', emailResult.error)
+      console.error('Error enviando credenciales reset:', emailResult.error)
       // Return credentials on screen since email failed
       return NextResponse.json({
         success: true,
-        message: 'No se pudo enviar el correo. Sus credenciales se muestran abajo. Guarde esta información.',
+        message: 'No se pudo enviar el correo. Sus nuevas credenciales se muestran abajo. Guarde esta información.',
         emailSent: false,
         tempPassword,
         token,
@@ -86,11 +77,11 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Credenciales enviadas a su correo electrónico. Revise su bandeja de entrada.',
+      message: 'Nuevas credenciales enviadas a su correo electrónico. Revise su bandeja de entrada.',
       emailSent: true,
     })
   } catch (error) {
-    console.error('Error inicializando credenciales:', error)
+    console.error('Error reseteando credenciales:', error)
     return NextResponse.json(
       { error: 'Error interno del servidor' },
       { status: 500 }

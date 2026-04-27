@@ -5,7 +5,8 @@ import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   Building2, Mail, Lock, KeyRound, Loader2, Shield,
-  ArrowRight, Eye, EyeOff, CheckCircle2, Info, User
+  ArrowRight, Eye, EyeOff, CheckCircle2, Info, User,
+  Copy, AlertTriangle
 } from 'lucide-react'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -17,7 +18,7 @@ import { Label } from '@/components/ui/label'
 // TYPES
 // ============================================================================
 
-type LoginStep = 'email' | 'password' | 'verify-token' | 'setup-password'
+type LoginStep = 'email' | 'password' | 'credentials-shown' | 'verify-token' | 'setup-password'
 
 // ============================================================================
 // LOGIN PAGE
@@ -35,6 +36,23 @@ export default function LoginPage() {
   const [initMessage, setInitMessage] = useState('')
   const [isFirstTime, setIsFirstTime] = useState(false)
   const [deptInfo, setDeptInfo] = useState<{ name: string; responsibleName: string } | null>(null)
+  const [shownCredentials, setShownCredentials] = useState<{ tempPassword: string; token: string } | null>(null)
+
+  // Copy to clipboard helper
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      toast.success(`${label} copiado al portapapeles`)
+    }).catch(() => {
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea')
+      textArea.value = text
+      document.body.appendChild(textArea)
+      textArea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textArea)
+      toast.success(`${label} copiado al portapapeles`)
+    })
+  }
 
   // Step 1: Check if email exists in the system
   const checkEmail = useMutation({
@@ -52,11 +70,11 @@ export default function LoginPage() {
       setDeptInfo({ name: data.departmentName, responsibleName: data.responsibleName })
 
       if (!data.hasPassword) {
-        // First time user - initialize credentials (generate temp password + token, send via email)
+        // First time user - initialize credentials
         setIsFirstTime(true)
         initCredentials.mutate(email)
       } else {
-        // Returning user - just go to password step
+        // Returning user - go to password step
         setIsFirstTime(false)
         setInitMessage('')
         setStep('password')
@@ -80,19 +98,57 @@ export default function LoginPage() {
       return data
     },
     onSuccess: (data) => {
-      setInitMessage(data.message)
-      setStep('password')
-      toast.success('Credenciales enviadas a su correo electrónico')
+      if (!data.emailSent && data.tempPassword && data.token) {
+        // Email failed - show credentials on screen
+        setShownCredentials({ tempPassword: data.tempPassword, token: data.token })
+        setInitMessage(data.message)
+        setStep('credentials-shown')
+      } else {
+        // Email sent - go to password step
+        setInitMessage(data.message)
+        setStep('password')
+        toast.success('Credenciales enviadas a su correo electrónico')
+      }
     },
     onError: (error: Error) => {
       if (error.message.includes('ya tiene una contraseña')) {
-        // Edge case: user already has password now, just go to login
         setIsFirstTime(false)
         setStep('password')
         toast.info('Su cuenta ya está activa. Ingrese su contraseña.')
       } else {
         toast.error(error.message)
       }
+    },
+  })
+
+  // Reset credentials (forgot password)
+  const resetCredentials = useMutation({
+    mutationFn: async (emailAddr: string) => {
+      const res = await fetch('/api/auth/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailAddr }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Error al resetear credenciales')
+      return data
+    },
+    onSuccess: (data) => {
+      if (!data.emailSent && data.tempPassword && data.token) {
+        // Email failed - show credentials on screen
+        setShownCredentials({ tempPassword: data.tempPassword, token: data.token })
+        setInitMessage(data.message)
+        setIsFirstTime(true) // will need to verify token and set new password
+        setStep('credentials-shown')
+      } else {
+        setInitMessage(data.message)
+        setIsFirstTime(true) // will need to verify token and set new password
+        setStep('password')
+        toast.success('Nuevas credenciales enviadas a su correo electrónico')
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
     },
   })
 
@@ -114,7 +170,6 @@ export default function LoginPage() {
       return data
     },
     onSuccess: (data) => {
-      // If user has a pending token (first-time login), require token verification
       if (data.requiresTokenVerification) {
         setStep('verify-token')
         toast.info('Debe verificar su identidad con el token de seguridad')
@@ -207,7 +262,7 @@ export default function LoginPage() {
     setupPasswordMutation.mutate({ deptId: verifiedDeptId, newPass: newPassword })
   }
 
-  const isLoading = checkEmail.isPending || initCredentials.isPending || loginMutation.isPending || verifyTokenMutation.isPending || setupPasswordMutation.isPending
+  const isLoading = checkEmail.isPending || initCredentials.isPending || resetCredentials.isPending || loginMutation.isPending || verifyTokenMutation.isPending || setupPasswordMutation.isPending
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-950 via-blue-900 to-slate-900 p-4">
@@ -224,7 +279,7 @@ export default function LoginPage() {
         {/* Step indicator */}
         <div className="flex items-center justify-center gap-2 mb-4">
           {[
-            { key: 'email', label: '1', done: step !== 'email' },
+            { key: 'email', label: '1', done: step !== 'email' && step !== 'credentials-shown' },
             { key: 'password', label: '2', done: step === 'verify-token' || step === 'setup-password' },
             { key: 'verify', label: '3', done: step === 'setup-password' },
             { key: 'setup', label: '4', done: false },
@@ -294,6 +349,101 @@ export default function LoginPage() {
             </>
           )}
 
+          {/* Step: Credentials Shown (when email delivery failed) */}
+          {step === 'credentials-shown' && shownCredentials && (
+            <>
+              <CardHeader className="text-center pb-2">
+                <CardTitle className="text-lg flex items-center justify-center gap-2">
+                  <KeyRound className="size-5 text-amber-600" />
+                  Sus Credenciales de Acceso
+                </CardTitle>
+                <CardDescription>
+                  No se pudo enviar el correo. Guarde esta información.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 flex items-start gap-2">
+                  <AlertTriangle className="size-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-amber-700">
+                    El servidor de correo no está disponible. Anote sus credenciales y guárdelas en un lugar seguro. No podrá verlas de nuevo.
+                  </p>
+                </div>
+
+                {/* Department info */}
+                {deptInfo && (
+                  <div className="bg-slate-50 border rounded-lg p-3 mb-4">
+                    <p className="text-sm font-medium">{deptInfo.responsibleName}</p>
+                    <p className="text-xs text-muted-foreground">{deptInfo.name}</p>
+                    <p className="text-xs text-muted-foreground">{email}</p>
+                  </div>
+                )}
+
+                {/* Temp Password */}
+                <div className="space-y-3 mb-4">
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <Label className="text-xs font-semibold text-red-700">Contraseña Temporal</Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => copyToClipboard(shownCredentials.tempPassword, 'Contraseña')}
+                      >
+                        <Copy className="size-3 mr-1" /> Copiar
+                      </Button>
+                    </div>
+                    <p className="text-lg font-bold font-mono text-red-800 tracking-wider break-all">
+                      {shownCredentials.tempPassword}
+                    </p>
+                  </div>
+
+                  {/* Security Token */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <Label className="text-xs font-semibold text-blue-700">Token de Seguridad</Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => copyToClipboard(shownCredentials.token, 'Token')}
+                      >
+                        <Copy className="size-3 mr-1" /> Copiar
+                      </Button>
+                    </div>
+                    <p className="text-sm font-bold font-mono text-blue-800 tracking-wide break-all leading-relaxed">
+                      {shownCredentials.token}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                  <p className="text-xs text-blue-700 font-semibold mb-1">📌 Instrucciones:</p>
+                  <ol className="text-xs text-blue-700 list-decimal list-inside space-y-1">
+                    <li>Copie la <strong>contraseña temporal</strong> y el <strong>token</strong></li>
+                    <li>Haga clic en &quot;Continuar&quot; para ir al inicio de sesión</li>
+                    <li>Ingrese la contraseña temporal</li>
+                    <li>Ingrese el token de seguridad</li>
+                    <li>Cree su nueva contraseña personal</li>
+                  </ol>
+                </div>
+
+                <Button
+                  type="button"
+                  className="w-full bg-blue-700 hover:bg-blue-800 text-white min-h-[44px]"
+                  onClick={() => {
+                    setPassword('') // User will enter the temp password they just saw
+                    setStep('password')
+                  }}
+                >
+                  <ArrowRight className="size-4 mr-2" />
+                  Continuar al Inicio de Sesión
+                </Button>
+              </CardContent>
+            </>
+          )}
+
           {/* Step: Password Entry */}
           {step === 'password' && (
             <>
@@ -322,7 +472,7 @@ export default function LoginPage() {
                   <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 flex items-start gap-2">
                     <Info className="size-4 text-amber-600 mt-0.5 flex-shrink-0" />
                     <p className="text-xs text-amber-700">
-                      Es su primer acceso. Se enviarán credenciales temporales a su correo electrónico.
+                      Es su primer acceso. Ingrese la contraseña temporal que recibió en su correo electrónico.
                     </p>
                   </div>
                 )}
@@ -336,7 +486,7 @@ export default function LoginPage() {
                       <Input
                         id="password"
                         type={showPassword ? 'text' : 'password'}
-                        placeholder={isFirstTime ? 'Ingrese la contraseña temporal de su correo' : 'Ingrese su contraseña'}
+                        placeholder={isFirstTime ? 'Ingrese la contraseña temporal' : 'Ingrese su contraseña'}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         className="pl-9 pr-10 min-h-[44px]"
@@ -364,15 +514,33 @@ export default function LoginPage() {
                     )}
                     Iniciar Sesión
                   </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="w-full text-xs"
-                    onClick={() => { setStep('email'); setPassword(''); setInitMessage(''); }}
-                    disabled={isLoading}
-                  >
-                    Cambiar correo
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="flex-1 text-xs"
+                      onClick={() => { setStep('email'); setPassword(''); setInitMessage(''); }}
+                      disabled={isLoading}
+                    >
+                      Cambiar correo
+                    </Button>
+                    {!isFirstTime && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="flex-1 text-xs text-amber-700 hover:text-amber-800"
+                        onClick={() => resetCredentials.mutate(email)}
+                        disabled={isLoading || resetCredentials.isPending}
+                      >
+                        {resetCredentials.isPending ? (
+                          <Loader2 className="size-3 mr-1 animate-spin" />
+                        ) : (
+                          <KeyRound className="size-3 mr-1" />
+                        )}
+                        Olvidé mi contraseña
+                      </Button>
+                    )}
+                  </div>
                 </form>
               </CardContent>
             </>
@@ -399,7 +567,18 @@ export default function LoginPage() {
                     </p>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="token">Token de Seguridad</Label>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="token">Token de Seguridad</Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => copyToClipboard(token, 'Token')}
+                      >
+                        <Copy className="size-3 mr-1" /> Copiar campo
+                      </Button>
+                    </div>
                     <div className="relative">
                       <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                       <Input
