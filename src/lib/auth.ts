@@ -99,7 +99,7 @@ export async function setSessionCookie(token: string) {
   const cookieStore = await cookies()
   cookieStore.set(COOKIE_NAME, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: false, // Always false - Caddy proxies HTTP internally, secure cookies won't be sent back
     sameSite: 'lax',
     maxAge: 60 * 60 * 8, // 8 hours
     path: '/',
