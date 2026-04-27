@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "prisma generate && next dev -p 3000",
-    "setup": "prisma generate && prisma db push && echo Setup complete! Run npm run dev to start.",
+    "setup": "prisma generate && prisma db push && echo Setup complete! The database will auto-seed on first login. Run npm run dev to start.",
     "build": "prisma generate && next build",
     "start": "prisma generate && next start -H 0.0.0.0 -p 3000",
     "lint": "eslint .",

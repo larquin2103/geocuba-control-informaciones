@@ -73,11 +73,22 @@ export default function LoginPage() {
 
   // Step 1: Check if email exists in the system
   const checkEmail = useMutation({
-    mutationFn: (emailAddr: string) => safeApiFetch<{ exists: boolean; hasPassword: boolean; departmentName: string; responsibleName: string }>('/api/auth/check', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: emailAddr }),
-    }),
+    mutationFn: async (emailAddr: string) => {
+      try {
+        return await safeApiFetch<{ exists: boolean; hasPassword: boolean; departmentName: string; responsibleName: string }>('/api/auth/check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: emailAddr }),
+        })
+      } catch (err) {
+        // Provide clearer error messages
+        const msg = err instanceof Error ? err.message : ''
+        if (msg.includes('No se encontró')) {
+          throw new Error('Correo no registrado. Verifique que el correo sea correcto o contacte al administrador.')
+        }
+        throw err
+      }
+    },
     onSuccess: (data) => {
       setDeptInfo({ name: data.departmentName, responsibleName: data.responsibleName })
 
